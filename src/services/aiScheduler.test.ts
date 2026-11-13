@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialPlannerState } from '../data/presets';
 import type { StudyBlock } from '../types/planner';
-import { validateAndSanitizeAiBlocks } from './aiScheduler';
+import { buildAiSchedulePrompt, validateAndSanitizeAiBlocks } from './aiScheduler';
 
 describe('AI Scheduler sanitizer and constraints enforcement', () => {
   it('enforces the 3-hour (180m) non-prep subject limit on 직전보강 days', () => {
@@ -114,5 +114,43 @@ describe('AI Scheduler sanitizer and constraints enforcement', () => {
     expect(result.blocks).toHaveLength(1);
     expect(result.blocks[0].title).toBe('영어Ⅱ 10모 오답');
     expect(result.skippedInvalid).toBe(3);
+  });
+
+  it('serializes block duration settings, custom rules, user instructions, and current AI blocks into prompt', () => {
+    const state = createInitialPlannerState();
+    const existingAiDraft: StudyBlock[] = [
+      {
+        id: 'ai-draft-1',
+        date: '2026-11-16',
+        startTime: '19:00',
+        endTime: '20:00',
+        subjectId: 'subj-eng2',
+        title: '영어Ⅱ 10모 오답',
+        type: 'study',
+        completed: false,
+        source: 'ai',
+        updatedAt: 1000,
+      },
+    ];
+
+    const { fullPrompt } = buildAiSchedulePrompt({
+      state,
+      apiKey: '',
+      model: 'gemini-4-hydrogen',
+      startDate: '2026-11-16',
+      preserveCompletedAndManual: true,
+      minBlockMinutes: 120,
+      maxBlockMinutes: 180,
+      customRules: ['블록 사이 15분 휴식 간격 확보'],
+      userInstruction: '한 블록 하는 시간을 2시간으로 늘려줘',
+      currentDraftBlocks: existingAiDraft,
+      revisionHistory: [{ instruction: '초기 생성', rationale: '기본 배치 완료' }],
+    });
+
+    expect(fullPrompt).toContain('120분~180분');
+    expect(fullPrompt).toContain('블록 사이 15분 휴식 간격 확보');
+    expect(fullPrompt).toContain('한 블록 하는 시간을 2시간으로 늘려줘');
+    expect(fullPrompt).toContain('currentScheduleBlocks');
+    expect(fullPrompt).toContain('영어Ⅱ 10모 오답');
   });
 });

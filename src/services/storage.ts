@@ -4,6 +4,29 @@ import type { PlannerState } from '../types/planner';
 const PLANNER_STATE_KEY = 'final_exam_planner_state_v1';
 const GEMINI_API_KEY_STORAGE = 'final_exam_planner_gemini_api_key';
 const GEMINI_MODEL_STORAGE = 'final_exam_planner_gemini_model_v2';
+const AI_PREFS_STORAGE = 'final_exam_planner_ai_prefs_v1';
+
+export type BlockDurationPreset = '30-60' | '45-90' | '60-120' | '90-150' | '120-180';
+
+export interface BlockDurationOption {
+  id: BlockDurationPreset;
+  label: string;
+  minMinutes: number;
+  maxMinutes: number;
+}
+
+export const BLOCK_DURATION_PRESETS: readonly BlockDurationOption[] = [
+  { id: '30-60', label: '30–60분 (짧은 집중)', minMinutes: 30, maxMinutes: 60 },
+  { id: '45-90', label: '45–90분 (기본 권장)', minMinutes: 45, maxMinutes: 90 },
+  { id: '60-120', label: '60–120분 (표준 심화)', minMinutes: 60, maxMinutes: 120 },
+  { id: '90-150', label: '90–150분 (긴 호흡)', minMinutes: 90, maxMinutes: 150 },
+  { id: '120-180', label: '120–180분 (장시간 몰입)', minMinutes: 120, maxMinutes: 180 },
+] as const;
+
+export interface AiSchedulePreferences {
+  blockDurationPreset: BlockDurationPreset;
+  customRules: string[];
+}
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
 
@@ -96,6 +119,38 @@ export function saveGeminiModel(modelId: string): void {
   try {
     const trimmed = modelId.trim();
     localStorage.setItem(GEMINI_MODEL_STORAGE, trimmed || DEFAULT_GEMINI_MODEL);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function loadAiSchedulePreferences(): AiSchedulePreferences {
+  const fallback: AiSchedulePreferences = {
+    blockDurationPreset: '60-120',
+    customRules: [],
+  };
+  try {
+    const raw = localStorage.getItem(AI_PREFS_STORAGE);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<AiSchedulePreferences>;
+    const validPreset = BLOCK_DURATION_PRESETS.some((p) => p.id === parsed.blockDurationPreset)
+      ? (parsed.blockDurationPreset as BlockDurationPreset)
+      : fallback.blockDurationPreset;
+    const validRules = Array.isArray(parsed.customRules)
+      ? parsed.customRules.filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
+      : [];
+    return {
+      blockDurationPreset: validPreset,
+      customRules: validRules,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveAiSchedulePreferences(prefs: AiSchedulePreferences): void {
+  try {
+    localStorage.setItem(AI_PREFS_STORAGE, JSON.stringify(prefs));
   } catch {
     // Ignore storage errors
   }
