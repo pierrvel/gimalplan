@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialPlannerState } from '../data/presets';
 import type { PlannerState, StudyBlock } from '../types/planner';
-import { mergePlannerStates } from './sync';
+import { cleanForFirestore, mergePlannerStates } from './sync';
 
 describe('Cloud/local planner state merge logic', () => {
   it('adopts cloud state when local device has no edits yet', () => {
@@ -106,5 +106,32 @@ describe('Cloud/local planner state merge logic', () => {
     expect(merged.studyBlocks[0].id).toBe('blk-shared');
     expect(merged.studyBlocks[0].title).toBe('클라우드 최신 제목');
     expect(merged.studyBlocks[0].completed).toBe(true);
+  });
+
+  it('strips undefined properties before Firestore setDoc serialization', () => {
+    const base = createInitialPlannerState();
+    const dirty: PlannerState = {
+      ...base,
+      lastUpdatedBy: undefined,
+      studyBlocks: [
+        {
+          id: 'blk-1',
+          date: '2026-11-20',
+          startTime: '10:00',
+          endTime: '11:00',
+          subjectId: 'subj-eng2',
+          checklistItemId: undefined,
+          title: '직접 복습',
+          type: 'study',
+          completed: false,
+          source: 'manual',
+          updatedAt: base.updatedAt,
+        },
+      ],
+    };
+
+    const cleaned = cleanForFirestore(dirty);
+    expect('lastUpdatedBy' in cleaned).toBe(false);
+    expect('checklistItemId' in cleaned.studyBlocks[0]).toBe(false);
   });
 });

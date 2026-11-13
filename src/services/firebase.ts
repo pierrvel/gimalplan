@@ -37,12 +37,17 @@ if (isFirebaseConfigured) {
 
   try {
     db = initializeFirestore(app, {
+      ignoreUndefinedProperties: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
     });
   } catch {
-    db = getFirestore(app);
+    try {
+      db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+    } catch {
+      db = getFirestore(app);
+    }
   }
 }
 

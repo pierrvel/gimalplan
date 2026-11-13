@@ -124,6 +124,10 @@ export async function signOutGoogle(): Promise<void> {
   await signOut(auth);
 }
 
+export function cleanForFirestore<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data)) as T;
+}
+
 function getUserStateDocRef(uid: string) {
   if (!db) return null;
   return doc(db, 'users', uid, 'planner', 'state');
@@ -143,14 +147,14 @@ export async function loadAndMergeCloudPlanner(
       lastUpdatedBy: CLIENT_SESSION_ID,
       updatedAt: Date.now(),
     };
-    await setDoc(ref, initialToUpload);
+    await setDoc(ref, cleanForFirestore(initialToUpload));
     return initialToUpload;
   }
 
   const cloudState = sanitizePlannerState(snap.data());
   const merged = mergePlannerStates(localState, cloudState);
   if (localState.hasLocalEdits) {
-    await setDoc(ref, merged);
+    await setDoc(ref, cleanForFirestore(merged));
   }
   return merged;
 }
@@ -162,7 +166,7 @@ export async function pushPlannerStateToCloud(uid: string, state: PlannerState):
     ...state,
     lastUpdatedBy: CLIENT_SESSION_ID,
   };
-  await setDoc(ref, payload);
+  await setDoc(ref, cleanForFirestore(payload));
 }
 
 export function subscribeToCloudPlanner(
