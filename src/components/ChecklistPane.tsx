@@ -94,7 +94,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
               role="tab"
               aria-selected={selectedSubjectId === 'all'}
               onClick={() => setSelectedSubjectId('all')}
-              className={`touch-target shrink-0 cursor-pointer rounded-md border px-2.5 py-1 text-xs transition-colors ${
+              className={`touch-target shrink-0 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors sm:px-2.5 ${
                 selectedSubjectId === 'all'
                   ? 'border-blue-600 bg-blue-600 font-medium text-white'
                   : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100'
@@ -111,7 +111,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
                   role="tab"
                   aria-selected={active}
                   onClick={() => setSelectedSubjectId(subj.id)}
-                  className={`touch-target shrink-0 cursor-pointer rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                  className={`touch-target shrink-0 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors sm:px-2.5 ${
                     active
                       ? 'border-blue-600 bg-blue-600 font-medium text-white'
                       : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100'
@@ -127,7 +127,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
             type="button"
             aria-pressed={incompleteOnly}
             onClick={() => setIncompleteOnly((v) => !v)}
-            className={`tabular-nums touch-target shrink-0 cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`tabular-nums touch-target shrink-0 cursor-pointer rounded-md border px-2 py-1 text-xs font-medium transition-colors sm:px-2.5 ${
               incompleteOnly
                 ? 'border-blue-200 bg-blue-50 text-blue-700'
                 : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100'
@@ -228,9 +228,9 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
                     return (
                       <div
                         key={item.id}
-                        className="group flex items-center justify-between gap-2 px-3 py-1.5 transition-colors hover:bg-slate-50/70 sm:px-4"
+                        className="group flex items-start justify-between gap-2 px-3 py-2 transition-colors hover:bg-slate-50/70 sm:items-center sm:px-4 sm:py-1.5"
                       >
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center">
                           <label className="touch-checkbox shrink-0 cursor-pointer">
                             <input
                               type="checkbox"
@@ -250,16 +250,33 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
                             </span>
                           </label>
 
-                          <span
-                            className={`min-w-0 flex-1 text-xs ${
-                              item.completed ? 'text-zinc-400 line-through' : 'text-zinc-800'
-                            }`}
-                          >
-                            {item.title}
-                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div
+                              className={`break-words text-xs leading-relaxed ${
+                                item.completed ? 'text-zinc-400 line-through' : 'text-zinc-800'
+                              }`}
+                            >
+                              {item.title}
+                            </div>
+                            {linkedBlocks.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1 sm:hidden">
+                                {linkedBlocks.slice(0, 2).map((blk) => (
+                                  <button
+                                    key={blk.id}
+                                    type="button"
+                                    onClick={() => onJumpToDate(blk.date)}
+                                    title="타임라인에서 보기"
+                                    className="tabular-nums cursor-pointer rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
+                                  >
+                                    {formatShortDate(blk.date)} {blk.startTime}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-1.5">
+                        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
                           {linkedBlocks.slice(0, 2).map((blk) => (
                             <button
                               key={blk.id}
@@ -272,7 +289,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
                             </button>
                           ))}
 
-                          <span className="tabular-nums text-[11px] text-zinc-400">
+                          <span className="tabular-nums px-1 text-[11px] text-zinc-400">
                             {item.estimatedMinutes}분
                           </span>
 
@@ -280,7 +297,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
                             type="button"
                             onClick={() => startEditItem(item)}
                             aria-label={`${item.title} 수정`}
-                            className="touch-target inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-800"
+                            className="touch-icon inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-800"
                           >
                             <Pencil size={12} strokeWidth={1.5} aria-hidden="true" />
                           </button>
@@ -289,7 +306,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
                             type="button"
                             onClick={() => deleteChecklistItem(item.id)}
                             aria-label={`${item.title} 삭제`}
-                            className="touch-target inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-700"
+                            className="touch-icon inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-700"
                           >
                             <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
                           </button>

@@ -150,8 +150,8 @@ export const StudyBlockModal: React.FC<StudyBlockModalProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          <div className="col-span-2 sm:col-span-1">
             <label htmlFor="block-date" className="mb-1 block text-xs font-medium text-zinc-700">
               날짜
             </label>

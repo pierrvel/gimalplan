@@ -119,7 +119,7 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({
         {error && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
+            className="flex max-h-32 items-start gap-2 overflow-y-auto break-all rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
           >
             <AlertCircle size={14} strokeWidth={1.5} className="mt-0.5 shrink-0" aria-hidden="true" />
             <span>{error}</span>

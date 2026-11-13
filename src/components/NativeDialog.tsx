@@ -87,8 +87,8 @@ export const NativeDialog: React.FC<NativeDialogProps> = ({
       className={`${maxWidthClass} bg-white text-zinc-900`}
     >
       {open ? (
-        <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+        <div className="flex max-h-[calc(100dvh-1.25rem)] flex-col sm:max-h-[calc(100dvh-2rem)]">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-3.5 py-2.5 sm:px-4 sm:py-3">
             <h2 id={titleId} className="text-sm font-semibold text-zinc-900">
               {title}
             </h2>
@@ -101,7 +101,7 @@ export const NativeDialog: React.FC<NativeDialogProps> = ({
               <X size={16} strokeWidth={1.5} aria-hidden="true" />
             </button>
           </div>
-          <div className="scroll-pane flex-1 px-4 py-4">{children}</div>
+          <div className="scroll-pane flex-1 px-3.5 py-3 sm:px-4 sm:py-4">{children}</div>
         </div>
       ) : null}
     </dialog>

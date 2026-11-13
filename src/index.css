@@ -14,7 +14,7 @@
 
   @media (pointer: coarse) {
     :root {
-      --target-size: 44px;
+      --target-size: 34px;
     }
   }
 
@@ -23,6 +23,7 @@
   #root {
     height: 100%;
     margin: 0;
+    overflow-x: hidden;
     background-color: var(--surface-canvas);
     color: var(--text-primary);
     font-family:
@@ -65,10 +66,15 @@
 
 .scroll-pane {
   overflow-y: auto;
-  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #d4d4d8 transparent;
+}
+
+@media (min-width: 640px) {
+  .scroll-pane {
+    scrollbar-gutter: stable;
+  }
 }
 
 .touch-target {
@@ -76,26 +82,40 @@
   min-inline-size: var(--target-size);
 }
 
+.touch-icon {
+  min-block-size: 28px;
+  min-inline-size: 28px;
+}
+
 .touch-checkbox {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-block-size: var(--target-size);
-  min-inline-size: var(--target-size);
+  min-block-size: 32px;
+  min-inline-size: 32px;
 }
 
 /* Native <dialog> scroll containment & backdrop */
 dialog:modal {
   overscroll-behavior: contain;
   margin: auto;
-  max-block-size: calc(100dvh - 2rem);
-  max-inline-size: calc(100dvw - 2rem);
+  width: calc(100dvw - 1.25rem);
+  max-block-size: calc(100dvh - 1.25rem);
+  max-inline-size: calc(100dvw - 1.25rem);
   padding: 0;
   border: 1px solid var(--border-hairline);
   border-radius: 0.5rem;
   background-color: var(--surface-canvas);
   color: var(--text-primary);
+}
+
+@media (min-width: 640px) {
+  dialog:modal {
+    width: 100%;
+    max-block-size: calc(100dvh - 2rem);
+    max-inline-size: calc(100dvw - 2rem);
+  }
 }
 
 dialog::backdrop {

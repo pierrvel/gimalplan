@@ -141,19 +141,19 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
   return (
     <section aria-label="주간 및 일별 시간표 타임라인" className="flex h-full min-h-0 flex-col bg-white">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-slate-50 px-3 py-2 sm:px-4">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-1.5 border-b border-zinc-200 bg-slate-50 px-3 py-1.5 sm:gap-2 sm:px-4 sm:py-2">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           <div
             role="tablist"
             aria-label="타임라인 보기 방식"
-            className="inline-flex rounded-md border border-zinc-200 bg-white p-0.5"
+            className="inline-flex shrink-0 rounded-md border border-zinc-200 bg-white p-0.5"
           >
             <button
               type="button"
               role="tab"
               aria-selected={viewMode === 'day'}
               onClick={() => setViewMode('day')}
-              className={`tab-item touch-target cursor-pointer rounded px-2.5 py-1 text-xs transition-colors ${
+              className={`tab-item touch-target cursor-pointer rounded px-2 py-1 text-xs transition-colors sm:px-2.5 ${
                 viewMode === 'day'
                   ? 'bg-slate-50 text-blue-600'
                   : 'text-zinc-600 hover:text-zinc-900'
@@ -166,7 +166,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
               role="tab"
               aria-selected={viewMode === 'week'}
               onClick={() => setViewMode('week')}
-              className={`tab-item touch-target cursor-pointer rounded px-2.5 py-1 text-xs transition-colors ${
+              className={`tab-item touch-target cursor-pointer rounded px-2 py-1 text-xs transition-colors sm:px-2.5 ${
                 viewMode === 'week'
                   ? 'bg-slate-50 text-blue-600'
                   : 'text-zinc-600 hover:text-zinc-900'
@@ -176,16 +176,16 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
             <button
               type="button"
               onClick={() => shiftRange(-1)}
               aria-label={viewMode === 'week' ? '이전 주' : '이전 날'}
-              className="touch-target inline-flex cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+              className="touch-target inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
             >
               <ChevronLeft size={15} strokeWidth={1.5} aria-hidden="true" />
             </button>
-            <span className="tabular-nums min-w-[7.2rem] px-1 text-center text-xs font-semibold text-zinc-900">
+            <span className="tabular-nums min-w-[5.2rem] truncate px-1 text-center text-xs font-semibold text-zinc-900 sm:min-w-[7.2rem]">
               {viewMode === 'day'
                 ? formatDateWithWeekday(selectedDate)
                 : `${formatShortDate(weekDates[0])} – ${formatShortDate(weekDates[6])}`}
@@ -194,7 +194,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
               type="button"
               onClick={() => shiftRange(1)}
               aria-label={viewMode === 'week' ? '다음 주' : '다음 날'}
-              className="touch-target inline-flex cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+              className="touch-target inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-white px-1.5 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
             >
               <ChevronRight size={15} strokeWidth={1.5} aria-hidden="true" />
             </button>
@@ -226,7 +226,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {viewMode === 'day' && (
             <button
               type="button"
@@ -240,12 +240,53 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
           <button
             type="button"
             onClick={() => onOpenAddBlock(selectedDate)}
-            className="touch-target inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50"
+            aria-label="학습 블록 추가"
+            className="touch-target inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50 sm:px-2.5"
           >
             <Plus size={14} strokeWidth={1.5} aria-hidden="true" />
-            <span>블록 추가</span>
+            <span>
+              <span className="hidden min-[380px]:inline">블록 </span>추가
+            </span>
           </button>
         </div>
+      </div>
+
+      {/* Mobile Quick Action Bar */}
+      <div className="flex items-center justify-between gap-1.5 border-b border-zinc-200 bg-white px-3 py-1.5 text-[11px] sm:hidden">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onSelectDate(today)}
+            className={`cursor-pointer rounded border px-2 py-0.5 text-[11px] ${
+              selectedDate === today
+                ? 'border-blue-200 bg-blue-50 font-medium text-blue-700'
+                : 'border-zinc-200 bg-white text-zinc-600'
+            }`}
+          >
+            오늘
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectDate(state.examStartDate)}
+            className={`cursor-pointer rounded border px-2 py-0.5 text-[11px] ${
+              selectedDate === state.examStartDate
+                ? 'border-blue-200 bg-blue-50 font-medium text-blue-700'
+                : 'border-zinc-200 bg-white text-zinc-600'
+            }`}
+          >
+            시험 시작일
+          </button>
+        </div>
+        {viewMode === 'day' && (
+          <button
+            type="button"
+            onClick={() => setShowFixedConstraints((v) => !v)}
+            aria-pressed={showFixedConstraints}
+            className="cursor-pointer rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-600"
+          >
+            {showFixedConstraints ? '고정일정 숨김' : '고정일정 표시'}
+          </button>
+        )}
       </div>
 
       {/* Day Context Summary Strip */}
@@ -330,7 +371,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
                 return (
                   <div
                     key={`fixed-${slot.kind}-${slot.start}-${idx}`}
-                    className={`flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 ${
+                    className={`flex items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 ${
                       isExam
                         ? 'bg-slate-50'
                         : isPrep
@@ -338,18 +379,20 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
                           : 'bg-white text-zinc-500'
                     }`}
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="tabular-nums w-24 shrink-0 text-xs font-medium text-zinc-600">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+                      <span className="tabular-nums w-[5.25rem] shrink-0 text-xs font-medium text-zinc-600 sm:w-24">
                         {slot.start}–{slot.end}
                       </span>
-                      {subj && <SubjectBadge name={subj.name} colorKey={subj.colorKey} compact />}
-                      <span
-                        className={`truncate text-xs ${
-                          isExam || isPrep ? 'font-semibold text-zinc-900' : 'text-zinc-500'
-                        }`}
-                      >
-                        {slot.label}
-                      </span>
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                        {subj && <SubjectBadge name={subj.name} colorKey={subj.colorKey} compact />}
+                        <span
+                          className={`break-words text-xs sm:truncate ${
+                            isExam || isPrep ? 'font-semibold text-zinc-900' : 'text-zinc-500'
+                          }`}
+                        >
+                          {slot.label}
+                        </span>
+                      </div>
                     </div>
                     <span
                       className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-medium ${
@@ -381,11 +424,11 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
               return (
                 <div
                   key={block.id}
-                  className={`group flex items-center justify-between gap-2 px-3 py-2 transition-colors sm:px-4 ${
+                  className={`group flex items-start justify-between gap-2 px-3 py-2 transition-colors sm:items-center sm:px-4 ${
                     block.completed ? 'bg-slate-50/70' : 'bg-white hover:bg-slate-50/60'
                   }`}
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                  <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-2.5">
                     <label className="touch-checkbox shrink-0 cursor-pointer">
                       <input
                         type="checkbox"
@@ -405,23 +448,31 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
                       </span>
                     </label>
 
-                    <div className="tabular-nums w-24 shrink-0 text-xs text-zinc-700">
-                      <span className="font-medium">{block.startTime}–{block.endTime}</span>
-                      <span className="ml-1 text-[11px] text-zinc-400">({mins}분)</span>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2.5">
+                      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                        <div className="tabular-nums text-xs text-zinc-700 sm:w-24">
+                          <span className="font-medium">{block.startTime}–{block.endTime}</span>
+                          <span className="ml-1 text-[11px] text-zinc-400">({mins}분)</span>
+                        </div>
+                        {subj && <SubjectBadge name={subj.name} colorKey={subj.colorKey} compact />}
+                        {block.source === 'ai' && (
+                          <span className="rounded border border-zinc-200 bg-slate-50 px-1 py-0.2 text-[10px] font-medium text-zinc-500 sm:hidden">
+                            AI
+                          </span>
+                        )}
+                      </div>
+
+                      <span
+                        className={`break-words text-xs sm:truncate ${
+                          block.completed ? 'text-zinc-400 line-through' : 'font-medium text-zinc-900'
+                        }`}
+                      >
+                        {block.title}
+                      </span>
                     </div>
-
-                    {subj && <SubjectBadge name={subj.name} colorKey={subj.colorKey} compact />}
-
-                    <span
-                      className={`truncate text-xs ${
-                        block.completed ? 'text-zinc-400 line-through' : 'font-medium text-zinc-900'
-                      }`}
-                    >
-                      {block.title}
-                    </span>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
                     {block.source === 'ai' && (
                       <span className="hidden rounded border border-zinc-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 sm:inline">
                         AI
@@ -431,7 +482,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
                       type="button"
                       onClick={() => onOpenEditBlock(block)}
                       aria-label={`${block.title} 수정`}
-                      className="touch-target inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-800"
+                      className="touch-icon inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-800"
                     >
                       <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
                     </button>
@@ -439,7 +490,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
                       type="button"
                       onClick={() => deleteStudyBlock(block.id)}
                       aria-label={`${block.title} 삭제`}
-                      className="touch-target inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-700"
+                      className="touch-icon inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-700"
                     >
                       <Trash2 size={13} strokeWidth={1.5} aria-hidden="true" />
                     </button>
@@ -476,8 +527,8 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
         </div>
       ) : (
         /* Week View */
-        <div className="scroll-pane flex-1">
-          <div className="grid min-w-[740px] grid-cols-7 divide-x divide-zinc-200 border-b border-zinc-200">
+        <div className="scroll-pane flex-1 overflow-x-auto">
+          <div className="grid grid-cols-1 divide-y divide-zinc-200 border-b border-zinc-200 sm:min-w-[740px] sm:grid-cols-7 sm:divide-x sm:divide-y-0">
             {weekDates.map((dateKey) => {
               const ctx = getDayScheduleContext(state, dateKey);
               const blocks = state.studyBlocks
@@ -493,7 +544,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
               return (
                 <div
                   key={dateKey}
-                  className={`flex min-h-[26rem] flex-col ${
+                  className={`flex min-h-0 flex-col sm:min-h-[26rem] ${
                     isSelected ? 'bg-slate-50/70' : 'bg-white'
                   }`}
                 >

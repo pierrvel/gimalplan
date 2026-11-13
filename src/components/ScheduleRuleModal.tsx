@@ -112,13 +112,13 @@ export const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({ open, onCl
   return (
     <NativeDialog open={open} onClose={onClose} title="과목·시험 시간표 및 제약 관리" maxWidthClass="w-full max-w-2xl">
       <div className="space-y-4">
-        <div role="tablist" aria-label="시간표 관리 탭" className="flex border-b border-zinc-200">
+        <div role="tablist" aria-label="시간표 관리 탭" className="flex overflow-x-auto border-b border-zinc-200">
           <button
             type="button"
             role="tab"
             aria-selected={tab === 'subjects'}
             onClick={() => setTab('subjects')}
-            className={`tab-item touch-target cursor-pointer px-3 py-2 text-xs ${
+            className={`tab-item touch-target shrink-0 cursor-pointer whitespace-nowrap px-2.5 py-2 text-xs sm:px-3 ${
               tab === 'subjects' ? 'text-blue-600' : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
@@ -129,7 +129,7 @@ export const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({ open, onCl
             role="tab"
             aria-selected={tab === 'weekly'}
             onClick={() => setTab('weekly')}
-            className={`tab-item touch-target cursor-pointer px-3 py-2 text-xs ${
+            className={`tab-item touch-target shrink-0 cursor-pointer whitespace-nowrap px-2.5 py-2 text-xs sm:px-3 ${
               tab === 'weekly' ? 'text-blue-600' : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
@@ -140,7 +140,7 @@ export const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({ open, onCl
             role="tab"
             aria-selected={tab === 'overrides'}
             onClick={() => setTab('overrides')}
-            className={`tab-item touch-target cursor-pointer px-3 py-2 text-xs ${
+            className={`tab-item touch-target shrink-0 cursor-pointer whitespace-nowrap px-2.5 py-2 text-xs sm:px-3 ${
               tab === 'overrides' ? 'text-blue-600' : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
@@ -153,8 +153,8 @@ export const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({ open, onCl
           <div className="space-y-4">
             <div className="divide-y divide-zinc-200 rounded-md border border-zinc-200">
               {state.subjects.map((subj) => (
-                <div key={subj.id} className="flex flex-wrap items-center justify-between gap-2 p-2.5 text-xs">
-                  <div className="flex items-center gap-2">
+                <div key={subj.id} className="flex items-start justify-between gap-2 p-2.5 text-xs sm:items-center">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2">
                     <SubjectBadge name={subj.name} colorKey={subj.colorKey} />
                     <input
                       type="date"
@@ -170,27 +170,29 @@ export const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({ open, onCl
                       onChange={(e) => updateSubject(subj.id, { examPeriod: e.target.value })}
                       className="w-16 rounded border border-zinc-200 px-1.5 py-1 text-xs"
                     />
-                    <input
-                      type="text"
-                      value={subj.examStart}
-                      aria-label={`${subj.name} 시작 시각`}
-                      onChange={(e) => updateSubject(subj.id, { examStart: e.target.value })}
-                      className="tabular-nums w-14 rounded border border-zinc-200 px-1.5 py-1 text-xs"
-                    />
-                    <span className="text-zinc-400">–</span>
-                    <input
-                      type="text"
-                      value={subj.examEnd}
-                      aria-label={`${subj.name} 종료 시각`}
-                      onChange={(e) => updateSubject(subj.id, { examEnd: e.target.value })}
-                      className="tabular-nums w-14 rounded border border-zinc-200 px-1.5 py-1 text-xs"
-                    />
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={subj.examStart}
+                        aria-label={`${subj.name} 시작 시각`}
+                        onChange={(e) => updateSubject(subj.id, { examStart: e.target.value })}
+                        className="tabular-nums w-14 rounded border border-zinc-200 px-1.5 py-1 text-xs"
+                      />
+                      <span className="text-zinc-400">–</span>
+                      <input
+                        type="text"
+                        value={subj.examEnd}
+                        aria-label={`${subj.name} 종료 시각`}
+                        onChange={(e) => updateSubject(subj.id, { examEnd: e.target.value })}
+                        className="tabular-nums w-14 rounded border border-zinc-200 px-1.5 py-1 text-xs"
+                      />
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => deleteSubject(subj.id)}
                     aria-label={`${subj.name} 과목 삭제`}
-                    className="touch-target inline-flex cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-700"
+                    className="touch-icon inline-flex shrink-0 cursor-pointer items-center justify-center rounded p-1 text-zinc-400 hover:bg-rose-50 hover:text-rose-700"
                   >
                     <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
                   </button>
