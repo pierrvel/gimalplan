@@ -63,10 +63,12 @@ export function saveLocalPlannerState(state: PlannerState): void {
 }
 
 export function loadGeminiApiKey(): string {
+  const envKey = import.meta.env.VITE_GEMINI_API_KEY?.trim() ?? '';
   try {
-    return localStorage.getItem(GEMINI_API_KEY_STORAGE) ?? '';
+    const localKey = localStorage.getItem(GEMINI_API_KEY_STORAGE)?.trim();
+    return localKey || envKey;
   } catch {
-    return '';
+    return envKey;
   }
 }
 
@@ -84,10 +86,11 @@ export function saveGeminiApiKey(key: string): void {
 }
 
 export function loadGeminiModel(): string {
+  const envModel = import.meta.env.VITE_GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
   try {
-    return localStorage.getItem(GEMINI_MODEL_STORAGE) || DEFAULT_GEMINI_MODEL;
+    return localStorage.getItem(GEMINI_MODEL_STORAGE)?.trim() || envModel;
   } catch {
-    return DEFAULT_GEMINI_MODEL;
+    return envModel;
   }
 }
 

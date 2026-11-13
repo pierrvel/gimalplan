@@ -82,7 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
 
           <div>
             <label htmlFor="gemini-api-key" className="mb-1 block text-xs font-medium text-zinc-700">
-              Gemini API Key (브라우저 로컬 저장)
+              Gemini API Key (VITE_GEMINI_API_KEY 환경 변수 또는 로컬 저장)
             </label>
             <div className="flex items-center gap-1.5">
               <input
