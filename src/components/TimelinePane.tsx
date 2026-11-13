@@ -13,6 +13,7 @@ import { usePlanner } from '../context/PlannerContext';
 import type { FixedSlot, StudyBlock, Subject } from '../types/planner';
 import {
   getDayScheduleContext,
+  getOpenStudyGaps,
   getOtherSubjectMinutesOnDate,
   getTotalAvailableMinutes,
 } from '../utils/availability';
@@ -99,36 +100,10 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
   }, [dayContext.fixedSlots, dayStudyBlocks, showFixedConstraints]);
 
   // Compute remaining free time gaps inside studyWindows
-  const openGaps = useMemo(() => {
-    const gaps: Array<{ start: string; end: string; minutes: number }> = [];
-    for (const w of dayContext.studyWindows) {
-      let cursor = parseTimeToMinutes(w.start);
-      const wEnd = parseTimeToMinutes(w.end);
-      const inside = dayStudyBlocks
-        .map((b) => ({ s: parseTimeToMinutes(b.startTime), e: parseTimeToMinutes(b.endTime) }))
-        .filter((r) => r.s < wEnd && r.e > cursor)
-        .sort((a, b) => a.s - b.s);
-
-      for (const blk of inside) {
-        if (blk.s > cursor + 14) {
-          gaps.push({
-            start: `${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`,
-            end: `${String(Math.floor(blk.s / 60)).padStart(2, '0')}:${String(blk.s % 60).padStart(2, '0')}`,
-            minutes: blk.s - cursor,
-          });
-        }
-        cursor = Math.max(cursor, blk.e);
-      }
-      if (wEnd > cursor + 14) {
-        gaps.push({
-          start: `${String(Math.floor(cursor / 60)).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`,
-          end: w.end,
-          minutes: wEnd - cursor,
-        });
-      }
-    }
-    return gaps;
-  }, [dayContext.studyWindows, dayStudyBlocks]);
+  const openGaps = useMemo(
+    () => getOpenStudyGaps(dayContext, dayStudyBlocks),
+    [dayContext, dayStudyBlocks],
+  );
 
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
   const today = getTodayDateKey();

@@ -2,7 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { usePlanner } from '../context/PlannerContext';
 import type { StudyBlock } from '../types/planner';
 import { getDayScheduleContext, getOtherSubjectMinutesOnDate } from '../utils/availability';
-import { formatDurationCompact, getDurationMinutes, parseTimeToMinutes } from '../utils/time';
+import {
+  formatDurationCompact,
+  formatMinutesToTime,
+  getDurationMinutes,
+  parseTimeToMinutes,
+} from '../utils/time';
 import { NativeDialog } from './NativeDialog';
 
 interface StudyBlockModalProps {
@@ -11,6 +16,9 @@ interface StudyBlockModalProps {
   initialDate: string;
   initialStartTime?: string;
   initialEndTime?: string;
+  initialSubjectId?: string;
+  initialChecklistItemId?: string;
+  initialTitle?: string;
   editingBlock?: StudyBlock | null;
 }
 
@@ -20,6 +28,9 @@ export const StudyBlockModal: React.FC<StudyBlockModalProps> = ({
   initialDate,
   initialStartTime = '19:00',
   initialEndTime = '20:30',
+  initialSubjectId,
+  initialChecklistItemId,
+  initialTitle,
   editingBlock = null,
 }) => {
   const { state, addStudyBlock, updateStudyBlock } = usePlanner();
@@ -46,11 +57,21 @@ export const StudyBlockModal: React.FC<StudyBlockModalProps> = ({
       setDate(initialDate);
       setStartTime(initialStartTime);
       setEndTime(initialEndTime);
-      setSubjectId(state.subjects[0]?.id ?? '');
-      setChecklistItemId('');
-      setTitle('');
+      setSubjectId(initialSubjectId ?? state.subjects[0]?.id ?? '');
+      setChecklistItemId(initialChecklistItemId ?? '');
+      setTitle(initialTitle ?? '');
     }
-  }, [open, editingBlock, initialDate, initialStartTime, initialEndTime, state.subjects]);
+  }, [
+    open,
+    editingBlock,
+    initialDate,
+    initialStartTime,
+    initialEndTime,
+    initialSubjectId,
+    initialChecklistItemId,
+    initialTitle,
+    state.subjects,
+  ]);
 
   const subjectItems = state.checklistItems.filter((c) => c.subjectId === subjectId);
   const ctx = getDayScheduleContext(state, date);
@@ -61,9 +82,16 @@ export const StudyBlockModal: React.FC<StudyBlockModalProps> = ({
 
   const handleSelectChecklist = (itemId: string) => {
     setChecklistItemId(itemId);
-    if (itemId && !title.trim()) {
+    if (itemId) {
       const found = subjectItems.find((i) => i.id === itemId);
-      if (found) setTitle(found.title);
+      if (found) {
+        setTitle(found.title);
+        const startMin = parseTimeToMinutes(startTime);
+        if (Number.isFinite(startMin)) {
+          const targetEnd = Math.min(24 * 60, Math.max(startMin + 15, startMin + found.estimatedMinutes));
+          setEndTime(formatMinutesToTime(targetEnd));
+        }
+      }
     }
   };
 
@@ -238,7 +266,7 @@ export const StudyBlockModal: React.FC<StudyBlockModalProps> = ({
             onChange={(e) => handleSelectChecklist(e.target.value)}
             className="w-full rounded-md border border-zinc-200 bg-white px-2.5 py-2 text-sm text-zinc-900"
           >
-            <option value="">연결 안 함 (자유 복습)</option>
+            <option value="">새 체크리스트 항목으로 자동 연동</option>
             {subjectItems.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.completed ? '[완료] ' : ''}

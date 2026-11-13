@@ -8,8 +8,9 @@ import { StudyBlockModal } from './components/StudyBlockModal';
 import { TimelinePane } from './components/TimelinePane';
 import { TopBar } from './components/TopBar';
 import { PlannerProvider, usePlanner } from './context/PlannerContext';
-import type { StudyBlock } from './types/planner';
-import { getTodayDateKey } from './utils/time';
+import type { ChecklistItem, StudyBlock } from './types/planner';
+import { getDayScheduleContext, getOpenStudyGaps } from './utils/availability';
+import { formatMinutesToTime, getTodayDateKey, parseTimeToMinutes } from './utils/time';
 
 type MobileTab = 'timeline' | 'checklist';
 
@@ -18,6 +19,9 @@ interface BlockModalState {
   date: string;
   startTime?: string;
   endTime?: string;
+  subjectId?: string;
+  checklistItemId?: string;
+  title?: string;
   editingBlock: StudyBlock | null;
 }
 
@@ -55,6 +59,29 @@ function PlannerShell() {
       date: dateKey,
       startTime,
       endTime,
+      subjectId: undefined,
+      checklistItemId: undefined,
+      title: undefined,
+      editingBlock: null,
+    });
+  };
+
+  const handleScheduleChecklistItem = (item: ChecklistItem) => {
+    const ctx = getDayScheduleContext(state, selectedDate);
+    const gaps = getOpenStudyGaps(ctx, state.studyBlocks);
+    const firstGap = gaps[0];
+    const startMin = firstGap ? parseTimeToMinutes(firstGap.start) : parseTimeToMinutes('19:00');
+    const maxEndMin = firstGap ? parseTimeToMinutes(firstGap.end) : 24 * 60;
+    const endMin = Math.min(maxEndMin, Math.max(startMin + 15, startMin + item.estimatedMinutes));
+
+    setBlockModal({
+      open: true,
+      date: selectedDate,
+      startTime: formatMinutesToTime(startMin),
+      endTime: formatMinutesToTime(endMin),
+      subjectId: item.subjectId,
+      checklistItemId: item.id,
+      title: item.title,
       editingBlock: null,
     });
   };
@@ -65,6 +92,9 @@ function PlannerShell() {
       date: block.date,
       startTime: block.startTime,
       endTime: block.endTime,
+      subjectId: block.subjectId,
+      checklistItemId: block.checklistItemId,
+      title: block.title,
       editingBlock: block,
     });
   };
@@ -175,7 +205,11 @@ function PlannerShell() {
             mobileTab === 'checklist' ? 'flex' : 'hidden'
           }`}
         >
-          <ChecklistPane onJumpToDate={handleJumpToDate} />
+          <ChecklistPane
+            selectedDate={selectedDate}
+            onJumpToDate={handleJumpToDate}
+            onScheduleChecklistItem={handleScheduleChecklistItem}
+          />
         </section>
       </main>
 
@@ -185,6 +219,9 @@ function PlannerShell() {
         initialDate={blockModal.date}
         initialStartTime={blockModal.startTime}
         initialEndTime={blockModal.endTime}
+        initialSubjectId={blockModal.subjectId}
+        initialChecklistItemId={blockModal.checklistItemId}
+        initialTitle={blockModal.title}
         editingBlock={blockModal.editingBlock}
       />
 

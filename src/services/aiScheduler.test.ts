@@ -152,5 +152,55 @@ describe('AI Scheduler sanitizer and constraints enforcement', () => {
     expect(fullPrompt).toContain('한 블록 하는 시간을 2시간으로 늘려줘');
     expect(fullPrompt).toContain('currentScheduleBlocks');
     expect(fullPrompt).toContain('영어Ⅱ 10모 오답');
+    expect(fullPrompt).toContain('checklistUpdates');
+  });
+
+  it('synchronizes checklist items (title, estimatedMinutes, new items) when AI updates or creates blocks', () => {
+    const state = createInitialPlannerState();
+    const targetItem = state.checklistItems[0];
+
+    const result = validateAndSanitizeAiBlocks(
+      [
+        {
+          date: '2026-11-16',
+          startTime: '19:00',
+          endTime: '21:00', // 120 minutes
+          subjectId: targetItem.subjectId,
+          checklistItemId: targetItem.id,
+          title: '집중 심화 복습 (1/1)',
+        },
+        {
+          date: '2026-11-16',
+          startTime: '21:30',
+          endTime: '23:00', // 90 minutes, not in original checklist
+          subjectId: 'subj-calc1',
+          title: '미적분Ⅰ 기출 변형 모의',
+        },
+      ],
+      state,
+      [],
+      '2026-11-16',
+      '2026-12-09',
+      [
+        {
+          id: targetItem.id,
+          subjectId: targetItem.subjectId,
+          title: '집중 심화 복습',
+          estimatedMinutes: 120,
+        },
+      ],
+    );
+
+    const updatedTarget = result.checklistItems.find((c) => c.id === targetItem.id);
+    expect(updatedTarget?.title).toBe('집중 심화 복습');
+    expect(updatedTarget?.estimatedMinutes).toBe(120);
+
+    const createdAuto = result.checklistItems.find(
+      (c) => c.title === '미적분Ⅰ 기출 변형 모의' && c.subjectId === 'subj-calc1',
+    );
+    expect(createdAuto).toBeDefined();
+    expect(createdAuto?.estimatedMinutes).toBe(90);
+    expect(result.blocks[1].checklistItemId).toBe(createdAuto?.id);
+    expect(result.syncedChecklistCount).toBeGreaterThanOrEqual(2);
   });
 });

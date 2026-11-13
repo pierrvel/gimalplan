@@ -1,5 +1,6 @@
 import { createInitialPlannerState } from '../data/presets';
-import type { PlannerState } from '../types/planner';
+import type { ChecklistItem, PlannerState, StudyBlock } from '../types/planner';
+import { getDurationMinutes } from '../utils/time';
 
 const PLANNER_STATE_KEY = 'final_exam_planner_state_v1';
 const GEMINI_API_KEY_STORAGE = 'final_exam_planner_gemini_api_key';
@@ -42,6 +43,45 @@ export function sanitizePlannerState(raw: unknown): PlannerState {
   if (!raw || typeof raw !== 'object') return fallback;
   const candidate = raw as Partial<PlannerState>;
 
+  const rawChecklist: ChecklistItem[] = Array.isArray(candidate.checklistItems)
+    ? candidate.checklistItems
+    : fallback.checklistItems;
+  const rawBlocks: StudyBlock[] = Array.isArray(candidate.studyBlocks)
+    ? candidate.studyBlocks
+    : fallback.studyBlocks;
+
+  // Reconcile any unlinked studyBlocks so Timeline <-> Checklist stay linked
+  const checklistItems = rawChecklist.map((c) => ({ ...c }));
+  const checklistIdSet = new Set(checklistItems.map((c) => c.id));
+  const stripSuffix = (t: string) =>
+    t.replace(/\s*(?:\(\s*\d+\s*\/\s*\d+\s*\)|\[\s*\d+\s*\/\s*\d+\s*\])\s*$/u, '').trim();
+
+  const studyBlocks = rawBlocks.map((blk) => {
+    if (blk.checklistItemId && checklistIdSet.has(blk.checklistItemId)) {
+      return blk;
+    }
+    const baseTitle = stripSuffix(blk.title);
+    let match = checklistItems.find(
+      (c) => c.subjectId === blk.subjectId && stripSuffix(c.title) === baseTitle,
+    );
+    if (!match) {
+      const now = blk.updatedAt || Date.now();
+      const autoId = `chk-auto-${blk.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24)}`;
+      match = {
+        id: checklistIdSet.has(autoId) ? `${autoId}-${checklistItems.length}` : autoId,
+        subjectId: blk.subjectId,
+        title: baseTitle || blk.title,
+        completed: blk.completed,
+        estimatedMinutes: Math.max(15, getDurationMinutes(blk.startTime, blk.endTime)),
+        createdAt: now,
+        updatedAt: now,
+      };
+      checklistItems.push(match);
+      checklistIdSet.add(match.id);
+    }
+    return { ...blk, checklistItemId: match.id };
+  });
+
   return {
     version: typeof candidate.version === 'number' ? candidate.version : fallback.version,
     updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : fallback.updatedAt,
@@ -54,10 +94,8 @@ export function sanitizePlannerState(raw: unknown): PlannerState {
     examEndDate:
       typeof candidate.examEndDate === 'string' ? candidate.examEndDate : fallback.examEndDate,
     subjects: Array.isArray(candidate.subjects) ? candidate.subjects : fallback.subjects,
-    checklistItems: Array.isArray(candidate.checklistItems)
-      ? candidate.checklistItems
-      : fallback.checklistItems,
-    studyBlocks: Array.isArray(candidate.studyBlocks) ? candidate.studyBlocks : fallback.studyBlocks,
+    checklistItems,
+    studyBlocks,
     weeklyRules:
       Array.isArray(candidate.weeklyRules) && candidate.weeklyRules.length === 7
         ? candidate.weeklyRules

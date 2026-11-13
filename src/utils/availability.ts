@@ -1,5 +1,5 @@
 import type { DayScheduleContext, FixedSlot, PlannerState, StudyBlock } from '../types/planner';
-import { getDayOfWeek, getDurationMinutes, parseTimeToMinutes } from './time';
+import { formatMinutesToTime, getDayOfWeek, getDurationMinutes, parseTimeToMinutes } from './time';
 
 export function getDayScheduleContext(state: PlannerState, dateKey: string): DayScheduleContext {
   const dayOfWeek = getDayOfWeek(dateKey);
@@ -97,4 +97,42 @@ export function getOtherSubjectMinutesOnDate(
   return blocks
     .filter((b) => b.date === dateKey && b.type === 'study' && b.subjectId !== finalPrepSubjectId)
     .reduce((acc, b) => acc + getDurationMinutes(b.startTime, b.endTime), 0);
+}
+
+export function getOpenStudyGaps(
+  ctx: DayScheduleContext,
+  blocks: StudyBlock[],
+): Array<{ start: string; end: string; minutes: number }> {
+  const dayBlocks = blocks
+    .filter((b) => b.date === ctx.date)
+    .sort((a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime));
+
+  const gaps: Array<{ start: string; end: string; minutes: number }> = [];
+  for (const w of ctx.studyWindows) {
+    let cursor = parseTimeToMinutes(w.start);
+    const wEnd = parseTimeToMinutes(w.end);
+    const inside = dayBlocks
+      .map((b) => ({ s: parseTimeToMinutes(b.startTime), e: parseTimeToMinutes(b.endTime) }))
+      .filter((r) => r.s < wEnd && r.e > cursor)
+      .sort((a, b) => a.s - b.s);
+
+    for (const blk of inside) {
+      if (blk.s > cursor + 14) {
+        gaps.push({
+          start: formatMinutesToTime(cursor),
+          end: formatMinutesToTime(blk.s),
+          minutes: blk.s - cursor,
+        });
+      }
+      cursor = Math.max(cursor, blk.e);
+    }
+    if (wEnd > cursor + 14) {
+      gaps.push({
+        start: formatMinutesToTime(cursor),
+        end: w.end,
+        minutes: wEnd - cursor,
+      });
+    }
+  }
+  return gaps;
 }

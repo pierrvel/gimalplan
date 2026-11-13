@@ -32,6 +32,39 @@ const SCHEDULE_RESPONSE_SCHEMA = {
         required: ['date', 'startTime', 'endTime', 'subjectId', 'title'],
       },
     },
+    checklistUpdates: {
+      type: Type.ARRAY,
+      description:
+        'Updates or additions to checklist items to keep the checklist synchronized with the scheduled blocks and user instructions.',
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: {
+            type: Type.STRING,
+            description:
+              'Existing checklist item id to update, or a new id (e.g. chk-ai-1) when creating a new checklist item.',
+          },
+          subjectId: {
+            type: Type.STRING,
+            description: 'Exact subject id from the supplied subjects list.',
+          },
+          title: {
+            type: Type.STRING,
+            description:
+              'Checklist item title in Korean, synchronized with the study block title.',
+          },
+          estimatedMinutes: {
+            type: Type.NUMBER,
+            description: 'Total estimated study minutes for this checklist item.',
+          },
+          deleted: {
+            type: Type.BOOLEAN,
+            description: 'True only if the user explicitly requested deleting this checklist item.',
+          },
+        },
+        required: ['id', 'subjectId', 'title', 'estimatedMinutes'],
+      },
+    },
   },
   required: ['rationale', 'blocks'],
 };

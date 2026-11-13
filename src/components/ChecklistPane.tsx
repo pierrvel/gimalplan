@@ -6,10 +6,16 @@ import { formatShortDate } from '../utils/time';
 import { SubjectBadge } from './SubjectBadge';
 
 interface ChecklistPaneProps {
+  selectedDate?: string;
   onJumpToDate: (dateKey: string) => void;
+  onScheduleChecklistItem?: (item: ChecklistItem) => void;
 }
 
-export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) => {
+export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
+  selectedDate,
+  onJumpToDate,
+  onScheduleChecklistItem,
+}) => {
   const {
     state,
     toggleChecklistItem,
@@ -258,36 +264,75 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({ onJumpToDate }) =>
                             >
                               {item.title}
                             </div>
-                            {linkedBlocks.length > 0 && (
+                            {linkedBlocks.length > 0 ? (
                               <div className="mt-1 flex flex-wrap gap-1 sm:hidden">
-                                {linkedBlocks.slice(0, 2).map((blk) => (
-                                  <button
-                                    key={blk.id}
-                                    type="button"
-                                    onClick={() => onJumpToDate(blk.date)}
-                                    title="타임라인에서 보기"
-                                    className="tabular-nums cursor-pointer rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
-                                  >
-                                    {formatShortDate(blk.date)} {blk.startTime}
-                                  </button>
-                                ))}
+                                {linkedBlocks.slice(0, 2).map((blk) => {
+                                  const isSelectedDay = blk.date === selectedDate;
+                                  return (
+                                    <button
+                                      key={blk.id}
+                                      type="button"
+                                      onClick={() => onJumpToDate(blk.date)}
+                                      title="타임라인에서 보기"
+                                      className={`tabular-nums cursor-pointer rounded border px-1.5 py-0.5 text-[10px] font-medium ${
+                                        isSelectedDay
+                                          ? 'border-blue-600 bg-blue-600 text-white'
+                                          : 'border-blue-200 bg-blue-50 text-blue-700'
+                                      }`}
+                                    >
+                                      {formatShortDate(blk.date)} {blk.startTime}
+                                    </button>
+                                  );
+                                })}
                               </div>
+                            ) : (
+                              onScheduleChecklistItem && (
+                                <div className="mt-1 sm:hidden">
+                                  <button
+                                    type="button"
+                                    onClick={() => onScheduleChecklistItem(item)}
+                                    className="cursor-pointer rounded border border-zinc-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:border-blue-300 hover:text-blue-700"
+                                  >
+                                    + 시간배치
+                                  </button>
+                                </div>
+                              )
                             )}
                           </div>
                         </div>
 
                         <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
-                          {linkedBlocks.slice(0, 2).map((blk) => (
-                            <button
-                              key={blk.id}
-                              type="button"
-                              onClick={() => onJumpToDate(blk.date)}
-                              title="타임라인에서 보기"
-                              className="tabular-nums hidden cursor-pointer rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-100 sm:inline"
-                            >
-                              {formatShortDate(blk.date)} {blk.startTime}
-                            </button>
-                          ))}
+                          {linkedBlocks.length > 0 ? (
+                            linkedBlocks.slice(0, 2).map((blk) => {
+                              const isSelectedDay = blk.date === selectedDate;
+                              return (
+                                <button
+                                  key={blk.id}
+                                  type="button"
+                                  onClick={() => onJumpToDate(blk.date)}
+                                  title="타임라인에서 보기"
+                                  className={`tabular-nums hidden cursor-pointer rounded border px-1.5 py-0.5 text-[10px] font-medium sm:inline ${
+                                    isSelectedDay
+                                      ? 'border-blue-600 bg-blue-600 text-white'
+                                      : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                  }`}
+                                >
+                                  {formatShortDate(blk.date)} {blk.startTime}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            onScheduleChecklistItem && (
+                              <button
+                                type="button"
+                                onClick={() => onScheduleChecklistItem(item)}
+                                title="선택된 날짜 타임라인에 배치"
+                                className="hidden cursor-pointer rounded border border-zinc-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 hover:border-blue-300 hover:text-blue-700 sm:inline"
+                              >
+                                + 시간배치
+                              </button>
+                            )
+                          )}
 
                           <span className="tabular-nums px-1 text-[11px] text-zinc-400">
                             {item.estimatedMinutes}분

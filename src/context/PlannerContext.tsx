@@ -37,6 +37,8 @@ import {
   signOutGoogle,
   subscribeToCloudPlanner,
 } from '../services/sync';
+import { extractPartSuffix, stripPartSuffix } from '../services/aiScheduler';
+import { formatMinutesToTime, getDurationMinutes, parseTimeToMinutes } from '../utils/time';
 
 interface PlannerContextValue {
   state: PlannerState;
@@ -81,7 +83,10 @@ interface PlannerContextValue {
     >,
   ) => void;
   deleteStudyBlock: (blockId: string) => void;
-  replaceStudyBlocksFromAi: (nextBlocks: StudyBlock[]) => void;
+  replaceStudyBlocksFromAi: (
+    nextBlocks: StudyBlock[],
+    nextChecklistItems?: ChecklistItem[],
+  ) => void;
   updateWeeklyRule: (rule: WeeklyRule) => void;
   upsertDateOverride: (override: Omit<DateOverride, 'updatedAt'>) => void;
   deleteDateOverride: (overrideId: string) => void;
@@ -302,19 +307,70 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     ) => {
       commitLocalMutation((prev) => {
         const now = Date.now();
+        const targetItem = prev.checklistItems.find((c) => c.id === itemId);
+        if (!targetItem) return prev;
+
+        const cleanTitle = patch.title !== undefined ? stripPartSuffix(patch.title.trim()) : undefined;
+        const nextMinutes =
+          patch.estimatedMinutes !== undefined
+            ? Math.max(15, Math.round(Number(patch.estimatedMinutes) || 60))
+            : undefined;
+
+        const nextChecklist = prev.checklistItems.map((c) => {
+          if (c.id !== itemId) return c;
+          return {
+            ...c,
+            ...patch,
+            ...(cleanTitle !== undefined && cleanTitle ? { title: cleanTitle } : {}),
+            ...(nextMinutes !== undefined ? { estimatedMinutes: nextMinutes } : {}),
+            updatedAt: now,
+          };
+        });
+
+        const linkedBlocks = prev.studyBlocks
+          .filter((b) => b.checklistItemId === itemId)
+          .sort((a, b) =>
+            a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
+          );
+
+        const currentSumMinutes = linkedBlocks.reduce(
+          (sum, b) => sum + getDurationMinutes(b.startTime, b.endTime),
+          0,
+        );
+        const lastLinkedId =
+          linkedBlocks.length > 0 ? linkedBlocks[linkedBlocks.length - 1].id : null;
+
+        const nextBlocks = prev.studyBlocks.map((b) => {
+          if (b.checklistItemId !== itemId) return b;
+          const nextBlock = { ...b, updatedAt: now };
+
+          if (cleanTitle !== undefined && cleanTitle) {
+            const suffix = extractPartSuffix(b.title);
+            nextBlock.title = `${cleanTitle}${suffix}`;
+          }
+          if (patch.subjectId !== undefined) {
+            nextBlock.subjectId = patch.subjectId;
+          }
+          if (patch.completed !== undefined) {
+            nextBlock.completed = patch.completed;
+          }
+          if (nextMinutes !== undefined && b.id === lastLinkedId) {
+            const startMin = parseTimeToMinutes(b.startTime);
+            const currentDur = getDurationMinutes(b.startTime, b.endTime);
+            const targetBlockDur =
+              linkedBlocks.length === 1
+                ? nextMinutes
+                : Math.max(15, currentDur + (nextMinutes - currentSumMinutes));
+            const nextEndMin = Math.min(24 * 60, Math.max(startMin + 15, startMin + targetBlockDur));
+            nextBlock.endTime = formatMinutesToTime(nextEndMin);
+          }
+          return nextBlock;
+        });
+
         return {
           ...prev,
-          checklistItems: prev.checklistItems.map((c) =>
-            c.id === itemId ? { ...c, ...patch, updatedAt: now } : c,
-          ),
-          studyBlocks:
-            patch.completed !== undefined
-              ? prev.studyBlocks.map((b) =>
-                  b.checklistItemId === itemId
-                    ? { ...b, completed: patch.completed as boolean, updatedAt: now }
-                    : b,
-                )
-              : prev.studyBlocks,
+          checklistItems: nextChecklist,
+          studyBlocks: nextBlocks,
         };
       });
     },
@@ -325,15 +381,22 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (itemId: string) => {
       commitLocalMutation((prev) => {
         const now = Date.now();
+        const nextTombstones = { ...(prev.tombstones ?? {}), [itemId]: now };
+        const remainingBlocks: StudyBlock[] = [];
+
+        for (const blk of prev.studyBlocks) {
+          if (blk.checklistItemId === itemId) {
+            nextTombstones[blk.id] = now;
+          } else {
+            remainingBlocks.push(blk);
+          }
+        }
+
         return {
           ...prev,
-          tombstones: { ...(prev.tombstones ?? {}), [itemId]: now },
+          tombstones: nextTombstones,
           checklistItems: prev.checklistItems.filter((c) => c.id !== itemId),
-          studyBlocks: prev.studyBlocks.map((b) =>
-            b.checklistItemId === itemId
-              ? { ...b, checklistItemId: undefined, updatedAt: now }
-              : b,
-          ),
+          studyBlocks: remainingBlocks,
         };
       });
     },
@@ -458,16 +521,75 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (input: Omit<StudyBlock, 'id' | 'updatedAt'>) => {
       commitLocalMutation((prev) => {
         const now = Date.now();
+        const baseTitle = stripPartSuffix(input.title.trim()) || '학습';
+        const duration = Math.max(15, getDurationMinutes(input.startTime, input.endTime));
+
+        let nextChecklist = [...prev.checklistItems];
+        let resolvedChecklistId =
+          input.checklistItemId && nextChecklist.some((c) => c.id === input.checklistItemId)
+            ? input.checklistItemId
+            : undefined;
+
+        if (!resolvedChecklistId) {
+          const matchingExisting = nextChecklist.find(
+            (c) =>
+              c.subjectId === input.subjectId &&
+              stripPartSuffix(c.title) === baseTitle,
+          );
+          if (matchingExisting) {
+            resolvedChecklistId = matchingExisting.id;
+          }
+        }
+
+        if (!resolvedChecklistId) {
+          const autoItem: ChecklistItem = {
+            id: makeId('chk-auto'),
+            subjectId: input.subjectId,
+            title: baseTitle,
+            completed: input.completed,
+            estimatedMinutes: duration,
+            createdAt: now,
+            updatedAt: now,
+          };
+          nextChecklist.push(autoItem);
+          resolvedChecklistId = autoItem.id;
+        }
+
         const block: StudyBlock = {
           ...input,
+          checklistItemId: resolvedChecklistId,
           id: makeId('blk'),
           updatedAt: now,
         };
+
+        const nextBlocks = [...prev.studyBlocks, block].sort((a, b) =>
+          a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
+        );
+
+        const linkedBlocks = nextBlocks.filter((b) => b.checklistItemId === resolvedChecklistId);
+        const totalMinutes = linkedBlocks.reduce(
+          (sum, b) => sum + getDurationMinutes(b.startTime, b.endTime),
+          0,
+        );
+        const allDone = linkedBlocks.length > 0 && linkedBlocks.every((b) => b.completed);
+
+        nextChecklist = nextChecklist.map((c) =>
+          c.id === resolvedChecklistId
+            ? {
+                ...c,
+                subjectId: input.subjectId,
+                title: baseTitle,
+                estimatedMinutes: totalMinutes,
+                completed: linkedBlocks.length > 1 ? allDone : input.completed,
+                updatedAt: now,
+              }
+            : c,
+        );
+
         return {
           ...prev,
-          studyBlocks: [...prev.studyBlocks, block].sort((a, b) =>
-            a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
-          ),
+          checklistItems: nextChecklist,
+          studyBlocks: nextBlocks,
         };
       });
     },
@@ -486,13 +608,87 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     ) => {
       commitLocalMutation((prev) => {
         const now = Date.now();
+        const existing = prev.studyBlocks.find((b) => b.id === blockId);
+        if (!existing) return prev;
+
+        const mergedBlock: StudyBlock = { ...existing, ...patch, updatedAt: now };
+        const baseTitle = stripPartSuffix(mergedBlock.title.trim()) || '학습';
+        let nextChecklist = [...prev.checklistItems];
+        let resolvedChecklistId =
+          mergedBlock.checklistItemId && nextChecklist.some((c) => c.id === mergedBlock.checklistItemId)
+            ? mergedBlock.checklistItemId
+            : undefined;
+
+        if (!resolvedChecklistId) {
+          const matching = nextChecklist.find(
+            (c) => c.subjectId === mergedBlock.subjectId && stripPartSuffix(c.title) === baseTitle,
+          );
+          if (matching) {
+            resolvedChecklistId = matching.id;
+          } else {
+            const autoItem: ChecklistItem = {
+              id: makeId('chk-auto'),
+              subjectId: mergedBlock.subjectId,
+              title: baseTitle,
+              completed: mergedBlock.completed,
+              estimatedMinutes: Math.max(15, getDurationMinutes(mergedBlock.startTime, mergedBlock.endTime)),
+              createdAt: now,
+              updatedAt: now,
+            };
+            nextChecklist.push(autoItem);
+            resolvedChecklistId = autoItem.id;
+          }
+        }
+
+        const updatedTarget: StudyBlock = {
+          ...mergedBlock,
+          checklistItemId: resolvedChecklistId,
+        };
+
+        let nextBlocks = prev.studyBlocks.map((b) => (b.id === blockId ? updatedTarget : b));
+
+        // Keep sibling blocks sharing the same checklistItemId in sync for title and subject
+        if (patch.title !== undefined || patch.subjectId !== undefined) {
+          nextBlocks = nextBlocks.map((b) => {
+            if (b.id === blockId || b.checklistItemId !== resolvedChecklistId) return b;
+            const suffix = extractPartSuffix(b.title);
+            return {
+              ...b,
+              subjectId: updatedTarget.subjectId,
+              title: patch.title !== undefined ? `${baseTitle}${suffix}` : b.title,
+              updatedAt: now,
+            };
+          });
+        }
+
+        nextBlocks.sort((a, b) =>
+          a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
+        );
+
+        const linkedBlocks = nextBlocks.filter((b) => b.checklistItemId === resolvedChecklistId);
+        const totalMinutes = linkedBlocks.reduce(
+          (sum, b) => sum + getDurationMinutes(b.startTime, b.endTime),
+          0,
+        );
+        const anyCompleted = linkedBlocks.some((b) => b.completed);
+
+        nextChecklist = nextChecklist.map((c) =>
+          c.id === resolvedChecklistId
+            ? {
+                ...c,
+                subjectId: updatedTarget.subjectId,
+                title: patch.title !== undefined ? baseTitle : c.title,
+                estimatedMinutes: totalMinutes > 0 ? totalMinutes : c.estimatedMinutes,
+                completed: patch.completed !== undefined ? anyCompleted : c.completed,
+                updatedAt: now,
+              }
+            : c,
+        );
+
         return {
           ...prev,
-          studyBlocks: prev.studyBlocks
-            .map((b) => (b.id === blockId ? { ...b, ...patch, updatedAt: now } : b))
-            .sort((a, b) =>
-              a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
-            ),
+          checklistItems: nextChecklist,
+          studyBlocks: nextBlocks,
         };
       });
     },
@@ -503,10 +699,39 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (blockId: string) => {
       commitLocalMutation((prev) => {
         const now = Date.now();
+        const target = prev.studyBlocks.find((b) => b.id === blockId);
+        const nextTombstones = { ...(prev.tombstones ?? {}), [blockId]: now };
+        const nextBlocks = prev.studyBlocks.filter((b) => b.id !== blockId);
+        let nextChecklist = prev.checklistItems;
+
+        if (target?.checklistItemId) {
+          const linkedRemaining = nextBlocks.filter(
+            (b) => b.checklistItemId === target.checklistItemId,
+          );
+          if (linkedRemaining.length > 0) {
+            const totalMinutes = linkedRemaining.reduce(
+              (sum, b) => sum + getDurationMinutes(b.startTime, b.endTime),
+              0,
+            );
+            nextChecklist = nextChecklist.map((c) =>
+              c.id === target.checklistItemId
+                ? { ...c, estimatedMinutes: totalMinutes, updatedAt: now }
+                : c,
+            );
+          } else if (
+            target.checklistItemId.startsWith('chk-auto-') ||
+            target.checklistItemId.startsWith('chk-ai-')
+          ) {
+            nextTombstones[target.checklistItemId] = now;
+            nextChecklist = nextChecklist.filter((c) => c.id !== target.checklistItemId);
+          }
+        }
+
         return {
           ...prev,
-          tombstones: { ...(prev.tombstones ?? {}), [blockId]: now },
-          studyBlocks: prev.studyBlocks.filter((b) => b.id !== blockId),
+          tombstones: nextTombstones,
+          checklistItems: nextChecklist,
+          studyBlocks: nextBlocks,
         };
       });
     },
@@ -514,20 +739,31 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   const replaceStudyBlocksFromAi = useCallback(
-    (nextBlocks: StudyBlock[]) => {
+    (nextBlocks: StudyBlock[], nextChecklistItems?: ChecklistItem[]) => {
       commitLocalMutation((prev) => {
         const now = Date.now();
-        const nextIds = new Set(nextBlocks.map((b) => b.id));
+        const nextBlockIds = new Set(nextBlocks.map((b) => b.id));
         const nextTombstones = { ...(prev.tombstones ?? {}) };
         for (const existing of prev.studyBlocks) {
-          if (!nextIds.has(existing.id)) {
+          if (!nextBlockIds.has(existing.id)) {
             nextTombstones[existing.id] = now;
           }
         }
+
+        if (nextChecklistItems) {
+          const nextChecklistIds = new Set(nextChecklistItems.map((c) => c.id));
+          for (const existingItem of prev.checklistItems) {
+            if (!nextChecklistIds.has(existingItem.id)) {
+              nextTombstones[existingItem.id] = now;
+            }
+          }
+        }
+
         return {
           ...prev,
           tombstones: nextTombstones,
           studyBlocks: nextBlocks,
+          checklistItems: nextChecklistItems ?? prev.checklistItems,
         };
       });
     },
