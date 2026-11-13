@@ -12,13 +12,14 @@ const PRESET_EPOCH = 1762992000000; // Deterministic baseline timestamp
 
 export const PASTEL_STYLE_MAP: Record<
   PastelColorKey,
-  { bg: string; text: string; border: string; dot: string; label: string }
+  { bg: string; text: string; border: string; dot: string; bar: string; label: string }
 > = {
   slate: {
     bg: 'bg-slate-100',
     text: 'text-slate-700',
     border: 'border-slate-200',
     dot: 'bg-slate-500',
+    bar: 'bg-slate-200/90 border-slate-300 text-slate-900',
     label: '슬레이트',
   },
   sky: {
@@ -26,6 +27,7 @@ export const PASTEL_STYLE_MAP: Record<
     text: 'text-sky-700',
     border: 'border-sky-200',
     dot: 'bg-sky-500',
+    bar: 'bg-sky-200/90 border-sky-300 text-sky-950',
     label: '스카이',
   },
   indigo: {
@@ -33,6 +35,7 @@ export const PASTEL_STYLE_MAP: Record<
     text: 'text-indigo-700',
     border: 'border-indigo-200',
     dot: 'bg-indigo-500',
+    bar: 'bg-indigo-200/90 border-indigo-300 text-indigo-950',
     label: '인디고',
   },
   emerald: {
@@ -40,6 +43,7 @@ export const PASTEL_STYLE_MAP: Record<
     text: 'text-emerald-700',
     border: 'border-emerald-200',
     dot: 'bg-emerald-500',
+    bar: 'bg-emerald-200/90 border-emerald-300 text-emerald-950',
     label: '에메랄드',
   },
   amber: {
@@ -47,6 +51,7 @@ export const PASTEL_STYLE_MAP: Record<
     text: 'text-amber-700',
     border: 'border-amber-200',
     dot: 'bg-amber-500',
+    bar: 'bg-amber-200/90 border-amber-300 text-amber-950',
     label: '앰버',
   },
   rose: {
@@ -54,6 +59,7 @@ export const PASTEL_STYLE_MAP: Record<
     text: 'text-rose-700',
     border: 'border-rose-200',
     dot: 'bg-rose-500',
+    bar: 'bg-rose-200/90 border-rose-300 text-rose-950',
     label: '로즈',
   },
   violet: {
@@ -61,6 +67,7 @@ export const PASTEL_STYLE_MAP: Record<
     text: 'text-violet-700',
     border: 'border-violet-200',
     dot: 'bg-violet-500',
+    bar: 'bg-violet-200/90 border-violet-300 text-violet-950',
     label: '바이올렛',
   },
   teal: {
@@ -68,6 +75,7 @@ export const PASTEL_STYLE_MAP: Record<
     text: 'text-teal-700',
     border: 'border-teal-200',
     dot: 'bg-teal-500',
+    bar: 'bg-teal-200/90 border-teal-300 text-teal-950',
     label: '틸',
   },
 };
