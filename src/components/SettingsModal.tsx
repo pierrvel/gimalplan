@@ -82,7 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
 
           <div>
             <label htmlFor="gemini-api-key" className="mb-1 block text-xs font-medium text-zinc-700">
-              Gemini API Key (VITE_GEMINI_API_KEY 환경 변수 또는 로컬 저장)
+              개인 Gemini API Key 덮어쓰기 (선택 · 미입력 시 서버 보안 키 사용)
             </label>
             <div className="flex items-center gap-1.5">
               <input
@@ -96,7 +96,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, onClose }) =
                   setApiKeyInput(e.target.value);
                   setSavedNotice(null);
                 }}
-                placeholder="AIza..."
+                placeholder="비워두면 서버에 보안 저장된 API 키를 사용합니다"
                 className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-900"
               />
               <button

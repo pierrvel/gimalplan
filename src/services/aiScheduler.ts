@@ -240,9 +240,6 @@ export async function generateAiStudySchedule(params: {
   const { state, apiKey, model, startDate, preserveCompletedAndManual } = params;
 
   const trimmedKey = apiKey.trim();
-  if (!trimmedKey) {
-    throw new Error('설정에서 Gemini API 키를 먼저 입력해 주세요.');
-  }
 
   const endDate = state.examEndDate;
   const effectiveStart = startDate > endDate ? endDate : startDate;
@@ -320,18 +317,64 @@ export async function generateAiStudySchedule(params: {
     '5. rationale은 한국어로 간결하고 객관적인 사실만 작성하세요 (이모지, 감탄사, 느낌표 금지).',
   ].join('\n');
 
-  const ai = new GoogleGenAI({ apiKey: trimmedKey });
-  const response = await ai.models.generateContent({
-    model: model.trim() || 'gemini-4-argon',
-    contents: `${systemPrompt}\n\n[입력 데이터]\n${JSON.stringify(payload)}`,
-    config: {
-      responseMimeType: 'application/json',
-      responseJsonSchema: SCHEDULE_RESPONSE_SCHEMA,
-      temperature: 0.2,
-    },
-  });
+  const resolvedModel = model.trim() || 'gemini-4-hydrogen';
+  const fullPrompt = `${systemPrompt}\n\n[입력 데이터]\n${JSON.stringify(payload)}`;
 
-  const text = response.text?.trim();
+  let text = '';
+  let serverErrorMessage: string | null = null;
+  let shouldFallbackToClient = false;
+
+  try {
+    const serverRes = await fetch('/api/schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: resolvedModel,
+        prompt: fullPrompt,
+        ...(trimmedKey ? { apiKey: trimmedKey } : {}),
+      }),
+    });
+
+    const contentType = serverRes.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      const json = (await serverRes.json()) as { text?: string; error?: string };
+      if (serverRes.ok && typeof json.text === 'string' && json.text.trim()) {
+        text = json.text.trim();
+      } else {
+        serverErrorMessage = json.error || `AI 서버 요청 실패 (${serverRes.status})`;
+      }
+    } else if (serverRes.status === 404 || serverRes.status === 405) {
+      shouldFallbackToClient = true;
+    } else {
+      serverErrorMessage = `AI 서버 응답 오류 (${serverRes.status})`;
+    }
+  } catch {
+    shouldFallbackToClient = true;
+  }
+
+  if (serverErrorMessage) {
+    throw new Error(serverErrorMessage);
+  }
+
+  if (!text && shouldFallbackToClient) {
+    if (!trimmedKey) {
+      throw new Error(
+        '서버(/api/schedule)에 연결할 수 없습니다. Vercel 배포 환경에서 실행하거나 설정에서 개인 Gemini API 키를 입력해 주세요.',
+      );
+    }
+    const ai = new GoogleGenAI({ apiKey: trimmedKey });
+    const response = await ai.models.generateContent({
+      model: resolvedModel,
+      contents: fullPrompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: SCHEDULE_RESPONSE_SCHEMA,
+        temperature: 0.2,
+      },
+    });
+    text = response.text?.trim() ?? '';
+  }
+
   if (!text) {
     throw new Error('Gemini API로부터 유효한 JSON 응답을 받지 못했습니다.');
   }

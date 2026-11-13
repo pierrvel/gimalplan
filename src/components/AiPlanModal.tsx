@@ -12,7 +12,11 @@ interface AiPlanModalProps {
   onOpenSettings: () => void;
 }
 
-export const AiPlanModal: React.FC<AiPlanModalProps> = ({ open, onClose, onOpenSettings }) => {
+export const AiPlanModal: React.FC<AiPlanModalProps> = ({
+  open,
+  onClose,
+  onOpenSettings: _onOpenSettings,
+}) => {
   const { state, geminiApiKey, geminiModel, replaceStudyBlocksFromAi } = usePlanner();
 
   const today = getTodayDateKey();
@@ -83,22 +87,6 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({ open, onClose, onOpenS
             <li>직전보강(12.02, 12.03, 12.06, 12.07): 보강 과목 외 타 과목 일일 최대 3시간 상한</li>
           </ul>
         </div>
-
-        {!geminiApiKey.trim() && (
-          <div className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <span>Gemini API 키가 아직 등록되지 않았습니다.</span>
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onOpenSettings();
-              }}
-              className="touch-target shrink-0 cursor-pointer rounded border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 hover:bg-amber-100"
-            >
-              설정에서 등록
-            </button>
-          </div>
-        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
@@ -192,7 +180,7 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({ open, onClose, onOpenS
           {!preview ? (
             <button
               type="submit"
-              disabled={loading || !geminiApiKey.trim()}
+              disabled={loading}
               className="touch-target inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (

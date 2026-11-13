@@ -3,14 +3,15 @@ import type { PlannerState } from '../types/planner';
 
 const PLANNER_STATE_KEY = 'final_exam_planner_state_v1';
 const GEMINI_API_KEY_STORAGE = 'final_exam_planner_gemini_api_key';
-const GEMINI_MODEL_STORAGE = 'final_exam_planner_gemini_model';
+const GEMINI_MODEL_STORAGE = 'final_exam_planner_gemini_model_v2';
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-4-argon';
+export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
 
 export const GEMINI_MODEL_PRESETS = [
-  { id: 'gemini-4-argon', label: 'Gemini 4 Argon (기본 · 고정밀 추론)' },
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash (고속 균형)' },
-  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (경량)' },
+  { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen (기본 · 추론/속도 균형)' },
+  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (고속 · 경량)' },
+  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash (고성능 에이전트)' },
+  { id: 'gemini-4-argon', label: 'Gemini 4 Argon (유료 티어 전용)' },
 ] as const;
 
 export function sanitizePlannerState(raw: unknown): PlannerState {
@@ -63,12 +64,10 @@ export function saveLocalPlannerState(state: PlannerState): void {
 }
 
 export function loadGeminiApiKey(): string {
-  const envKey = import.meta.env.VITE_GEMINI_API_KEY?.trim() ?? '';
   try {
-    const localKey = localStorage.getItem(GEMINI_API_KEY_STORAGE)?.trim();
-    return localKey || envKey;
+    return localStorage.getItem(GEMINI_API_KEY_STORAGE)?.trim() ?? '';
   } catch {
-    return envKey;
+    return '';
   }
 }
 
@@ -86,11 +85,10 @@ export function saveGeminiApiKey(key: string): void {
 }
 
 export function loadGeminiModel(): string {
-  const envModel = import.meta.env.VITE_GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
   try {
-    return localStorage.getItem(GEMINI_MODEL_STORAGE)?.trim() || envModel;
+    return localStorage.getItem(GEMINI_MODEL_STORAGE)?.trim() || DEFAULT_GEMINI_MODEL;
   } catch {
-    return envModel;
+    return DEFAULT_GEMINI_MODEL;
   }
 }
 
