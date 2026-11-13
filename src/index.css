@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --surface-canvas: #ffffff;
+    --surface-subtle: #f8fafc;
+    --border-hairline: #e4e4e7;
+    --text-primary: #18181b;
+    --text-muted: #71717a;
+    --accent-cobalt: #2563eb;
+    --target-size: 24px;
+  }
+
+  @media (pointer: coarse) {
+    :root {
+      --target-size: 44px;
+    }
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    background-color: var(--surface-canvas);
+    color: var(--text-primary);
+    font-family:
+      "Pretendard Variable",
+      "Pretendard",
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      "Noto Sans KR",
+      sans-serif;
+    overflow-wrap: anywhere;
+  }
+
+  ::selection {
+    background-color: #dbeafe;
+    color: #1e3a8a;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-cobalt);
+    outline-offset: 2px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+
+  input[type="checkbox"] {
+    accent-color: var(--accent-cobalt);
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.scroll-pane {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}
+
+.touch-target {
+  min-block-size: var(--target-size);
+  min-inline-size: var(--target-size);
+}
+
+.touch-checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: var(--target-size);
+  min-inline-size: var(--target-size);
+}
+
+/* Native <dialog> scroll containment & backdrop */
+dialog:modal {
+  overscroll-behavior: contain;
+  margin: auto;
+  max-block-size: calc(100dvh - 2rem);
+  max-inline-size: calc(100dvw - 2rem);
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: 0.5rem;
+  background-color: var(--surface-canvas);
+  color: var(--text-primary);
+}
+
+dialog::backdrop {
+  background-color: rgb(24 24 27 / 0.28);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Accessible tab active indicator via border-block-end pseudo-element */
+.tab-item {
+  position: relative;
+}
+
+.tab-item[aria-selected="true"] {
+  color: var(--accent-cobalt);
+  font-weight: 600;
+}
+
+.tab-item[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  border-block-end: 2px solid var(--accent-cobalt);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

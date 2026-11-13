@@ -1,0 +1,291 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Application: Final Exam Smart Planner PWA (기말 플래너)
+// Source of Truth: src/types/planner.ts, src/services/sync.ts
+//
+// Collection: users/{userId}/planner
+// Document ID: state (single document per user; all other docIds denied)
+// Access Pattern:
+//   - Owner-only getDoc, onSnapshot, and setDoc (create/update).
+//   - No collection queries (list), no deleteDoc, no parent users/{userId} doc.
+// Fields (PlannerState):
+//   - version: int (required, 1..1000) - schema version
+//   - updatedAt: int (required, 0..9999999999999) - epoch ms timestamp
+//   - hasLocalEdits: bool (required) - local dirty flag for merge behavior
+//   - lastUpdatedBy: string (optional, 1..128 chars) - client session ID
+//   - tombstones: map (optional, <= 2000 entries) - deleted entity ID -> epoch ms
+//   - examStartDate: string (required, YYYY-MM-DD) - exam period start date
+//   - examEndDate: string (required, YYYY-MM-DD, >= examStartDate) - exam period end date
+//   - subjects: list<Subject> (required, <= 50 items)
+//   - checklistItems: list<ChecklistItem> (required, <= 500 items)
+//   - studyBlocks: list<StudyBlock> (required, <= 1000 items)
+//   - weeklyRules: list<WeeklyRule> (required, exactly 7 items, dayOfWeek 0..6)
+//   - dateOverrides: list<DateOverride> (required, <= 120 items)
+//
+// Note on CEL Iteration Limits:
+//   Cloud Firestore Security Rules CEL does not support loops over dynamic-length
+//   lists or maps. Therefore, all 7 fixed weeklyRules entries are validated
+//   individually, while variable-length lists and tombstones enforce strict size
+//   upper bounds and schema/type spot-checks on boundary elements ([0]), paired
+//   with client-side sanitizePlannerState() defense-in-depth.
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated via Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if authenticated user matches the path owner userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Only the 'state' document is used under users/{userId}/planner
+    function isValidPlannerDocId(docId) {
+      return docId == 'state';
+    }
+
+    // Validate required top-level fields exist on the incoming document
+    function hasRequiredFields(requiredFields) {
+      return request.resource.data.keys().hasAll(requiredFields);
+    }
+
+    // Reject unknown top-level fields (strict schema, prevents schema pollution)
+    function hasOnlyAllowedFields(allowedFields) {
+      return request.resource.data.keys().hasOnly(allowedFields);
+    }
+
+    // Validate required and allowed keys on a nested map object
+    function mapHasValidKeys(mapData, requiredKeys, allowedKeys) {
+      return mapData is map &&
+             mapData.keys().hasAll(requiredKeys) &&
+             mapData.keys().hasOnly(allowedKeys);
+    }
+
+    // Validate list type and enforce max length bound (anti-DoS)
+    function isValidList(listVal, maxSize) {
+      return listVal is list && listVal.size() <= maxSize;
+    }
+
+    // Validate YYYY-MM-DD date string format
+    function isValidDateKey(dateStr) {
+      return dateStr is string &&
+             dateStr.size() == 10 &&
+             dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    // Validate non-negative JS epoch millisecond integer timestamp
+    function isValidTimestampMs(ts) {
+      return ts is int && ts >= 0 && ts <= 9999999999999;
+    }
+
+    // Validate optional string field with length bounds
+    function isValidOptionalString(mapData, field, minLen, maxLen) {
+      return !(field in mapData) ||
+             (mapData[field] is string &&
+              mapData[field].size() >= minLen &&
+              mapData[field].size() <= maxLen);
+    }
+
+    // Validate optional boolean field
+    function isValidOptionalBool(mapData, field) {
+      return !(field in mapData) || mapData[field] is bool;
+    }
+
+    // Validate optional bounded numeric field
+    function isValidOptionalNumberRange(mapData, field, minVal, maxVal) {
+      return !(field in mapData) ||
+             (mapData[field] is number &&
+              mapData[field] >= minVal &&
+              mapData[field] <= maxVal);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidTimeRange(range) {
+      return mapHasValidKeys(range, ['start', 'end'], ['start', 'end', 'label']) &&
+             range.start is string && range.start.size() <= 10 &&
+             range.end is string && range.end.size() <= 10 &&
+             isValidOptionalString(range, 'label', 0, 200);
+    }
+
+    function isValidFixedSlot(slot) {
+      return mapHasValidKeys(
+               slot,
+               ['start', 'end', 'kind', 'label'],
+               ['start', 'end', 'kind', 'label', 'subjectId']
+             ) &&
+             slot.start is string && slot.start.size() <= 10 &&
+             slot.end is string && slot.end.size() <= 10 &&
+             slot.kind in ['school', 'meal', 'academy', 'exam', 'final_prep'] &&
+             slot.label is string && slot.label.size() <= 200 &&
+             isValidOptionalString(slot, 'subjectId', 1, 128);
+    }
+
+    function isValidSubject(subj) {
+      let keys = [
+        'id', 'name', 'colorKey', 'examDate', 'examPeriod',
+        'examStart', 'examEnd', 'order', 'updatedAt'
+      ];
+      return mapHasValidKeys(subj, keys, keys) &&
+             subj.id is string && subj.id.size() >= 1 && subj.id.size() <= 128 &&
+             subj.name is string && subj.name.size() >= 1 && subj.name.size() <= 100 &&
+             subj.colorKey in ['slate', 'sky', 'indigo', 'emerald', 'amber', 'rose', 'violet', 'teal'] &&
+             subj.examDate is string && subj.examDate.size() <= 20 &&
+             subj.examPeriod is string && subj.examPeriod.size() <= 50 &&
+             subj.examStart is string && subj.examStart.size() <= 20 &&
+             subj.examEnd is string && subj.examEnd.size() <= 20 &&
+             subj.order is int && subj.order >= 0 && subj.order <= 100000 &&
+             isValidTimestampMs(subj.updatedAt);
+    }
+
+    function isValidChecklistItem(item) {
+      let keys = [
+        'id', 'subjectId', 'title', 'completed',
+        'estimatedMinutes', 'createdAt', 'updatedAt'
+      ];
+      return mapHasValidKeys(item, keys, keys) &&
+             item.id is string && item.id.size() >= 1 && item.id.size() <= 128 &&
+             item.subjectId is string && item.subjectId.size() >= 1 && item.subjectId.size() <= 128 &&
+             item.title is string && item.title.size() >= 1 && item.title.size() <= 500 &&
+             item.completed is bool &&
+             item.estimatedMinutes is number &&
+             item.estimatedMinutes >= 0 && item.estimatedMinutes <= 10080 &&
+             isValidTimestampMs(item.createdAt) &&
+             isValidTimestampMs(item.updatedAt);
+    }
+
+    function isValidStudyBlock(blk) {
+      let requiredKeys = [
+        'id', 'date', 'startTime', 'endTime', 'subjectId',
+        'title', 'type', 'completed', 'source', 'updatedAt'
+      ];
+      let allowedKeys = [
+        'id', 'date', 'startTime', 'endTime', 'subjectId',
+        'checklistItemId', 'title', 'type', 'completed', 'source', 'updatedAt'
+      ];
+      return mapHasValidKeys(blk, requiredKeys, allowedKeys) &&
+             blk.id is string && blk.id.size() >= 1 && blk.id.size() <= 128 &&
+             isValidDateKey(blk.date) &&
+             blk.startTime is string && blk.startTime.size() >= 1 && blk.startTime.size() <= 10 &&
+             blk.endTime is string && blk.endTime.size() >= 1 && blk.endTime.size() <= 10 &&
+             blk.subjectId is string && blk.subjectId.size() >= 1 && blk.subjectId.size() <= 128 &&
+             isValidOptionalString(blk, 'checklistItemId', 1, 128) &&
+             blk.title is string && blk.title.size() >= 1 && blk.title.size() <= 500 &&
+             blk.type in ['study', 'final_prep', 'exam'] &&
+             blk.completed is bool &&
+             blk.source in ['preset', 'ai', 'manual'] &&
+             isValidTimestampMs(blk.updatedAt);
+    }
+
+    function isValidWeeklyRule(rule) {
+      let keys = ['dayOfWeek', 'label', 'studyWindows', 'fixedSlots'];
+      return mapHasValidKeys(rule, keys, keys) &&
+             rule.dayOfWeek is int && rule.dayOfWeek >= 0 && rule.dayOfWeek <= 6 &&
+             rule.label is string && rule.label.size() <= 200 &&
+             isValidList(rule.studyWindows, 20) &&
+             isValidList(rule.fixedSlots, 30);
+    }
+
+    function isValidDateOverride(ovr) {
+      let requiredKeys = [
+        'id', 'date', 'title', 'studyWindows', 'fixedSlots', 'updatedAt'
+      ];
+      let allowedKeys = [
+        'id', 'date', 'title', 'note', 'studyWindows', 'fixedSlots',
+        'isExamPeriod', 'finalPrepSubjectId', 'maxOtherSubjectMinutes', 'updatedAt'
+      ];
+      return mapHasValidKeys(ovr, requiredKeys, allowedKeys) &&
+             ovr.id is string && ovr.id.size() >= 1 && ovr.id.size() <= 128 &&
+             isValidDateKey(ovr.date) &&
+             ovr.title is string && ovr.title.size() >= 1 && ovr.title.size() <= 200 &&
+             isValidOptionalString(ovr, 'note', 0, 1000) &&
+             isValidList(ovr.studyWindows, 20) &&
+             (ovr.studyWindows.size() == 0 || isValidTimeRange(ovr.studyWindows[0])) &&
+             isValidList(ovr.fixedSlots, 30) &&
+             (ovr.fixedSlots.size() == 0 || isValidFixedSlot(ovr.fixedSlots[0])) &&
+             isValidOptionalBool(ovr, 'isExamPeriod') &&
+             isValidOptionalString(ovr, 'finalPrepSubjectId', 1, 128) &&
+             isValidOptionalNumberRange(ovr, 'maxOtherSubjectMinutes', 0, 1440) &&
+             isValidTimestampMs(ovr.updatedAt);
+    }
+
+    function isValidPlannerState(data) {
+      let requiredFields = [
+        'version', 'updatedAt', 'hasLocalEdits', 'examStartDate', 'examEndDate',
+        'subjects', 'checklistItems', 'studyBlocks', 'weeklyRules', 'dateOverrides'
+      ];
+      let allowedFields = [
+        'version', 'updatedAt', 'hasLocalEdits', 'lastUpdatedBy', 'tombstones',
+        'examStartDate', 'examEndDate', 'subjects', 'checklistItems',
+        'studyBlocks', 'weeklyRules', 'dateOverrides'
+      ];
+      return data is map &&
+             hasRequiredFields(requiredFields) &&
+             hasOnlyAllowedFields(allowedFields) &&
+             data.version is int && data.version >= 1 && data.version <= 1000 &&
+             isValidTimestampMs(data.updatedAt) &&
+             data.hasLocalEdits is bool &&
+             isValidOptionalString(data, 'lastUpdatedBy', 1, 128) &&
+             (!('tombstones' in data) || (data.tombstones is map && data.tombstones.size() <= 2000)) &&
+             isValidDateKey(data.examStartDate) &&
+             isValidDateKey(data.examEndDate) &&
+             data.examEndDate >= data.examStartDate &&
+             isValidList(data.subjects, 50) &&
+             (data.subjects.size() == 0 || isValidSubject(data.subjects[0])) &&
+             isValidList(data.checklistItems, 500) &&
+             (data.checklistItems.size() == 0 || isValidChecklistItem(data.checklistItems[0])) &&
+             isValidList(data.studyBlocks, 1000) &&
+             (data.studyBlocks.size() == 0 || isValidStudyBlock(data.studyBlocks[0])) &&
+             data.weeklyRules is list && data.weeklyRules.size() == 7 &&
+             isValidWeeklyRule(data.weeklyRules[0]) &&
+             isValidWeeklyRule(data.weeklyRules[1]) &&
+             isValidWeeklyRule(data.weeklyRules[2]) &&
+             isValidWeeklyRule(data.weeklyRules[3]) &&
+             isValidWeeklyRule(data.weeklyRules[4]) &&
+             isValidWeeklyRule(data.weeklyRules[5]) &&
+             isValidWeeklyRule(data.weeklyRules[6]) &&
+             (data.weeklyRules[0].studyWindows.size() == 0 || isValidTimeRange(data.weeklyRules[0].studyWindows[0])) &&
+             (data.weeklyRules[0].fixedSlots.size() == 0 || isValidFixedSlot(data.weeklyRules[0].fixedSlots[0])) &&
+             isValidList(data.dateOverrides, 120) &&
+             (data.dateOverrides.size() == 0 || isValidDateOverride(data.dateOverrides[0]));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Strict owner-only isolation on users/{userId}/planner/state.
+    // Validator runs on BOTH create and update to eliminate Update Bypass.
+    // Delete is denied per least privilege (sync.ts only uses get/onSnapshot/setDoc).
+    match /users/{userId}/planner/{docId} {
+      allow read: if isOwner(userId) && isValidPlannerDocId(docId);
+      allow create: if isOwner(userId) &&
+                       isValidPlannerDocId(docId) &&
+                       isValidPlannerState(request.resource.data);
+      allow update: if isOwner(userId) &&
+                       isValidPlannerDocId(docId) &&
+                       isValidPlannerState(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Default deny all other collections, documents, and nested subcollections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
