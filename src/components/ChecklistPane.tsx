@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { usePlanner } from '../context/PlannerContext';
 import type { ChecklistItem, StudyBlock } from '../types/planner';
@@ -33,6 +33,15 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [editingMinutes, setEditingMinutes] = useState(60);
+  const filterStripRef = useRef<HTMLDivElement>(null);
+
+  // Keep the selected subject chip visible in the horizontally scrolling filter strip.
+  useEffect(() => {
+    const chip = filterStripRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (chip && typeof chip.scrollIntoView === 'function') {
+      chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [selectedSubjectId]);
 
   const sortedSubjects = useMemo(
     () => [...state.subjects].sort((a, b) => a.order - b.order),
@@ -94,6 +103,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
       <div className="border-b border-zinc-200 bg-slate-50 px-3 py-2 sm:px-4">
         <div className="flex items-center justify-between gap-2">
           <div
+            ref={filterStripRef}
             role="tablist"
             aria-label="과목 필터"
             className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5"

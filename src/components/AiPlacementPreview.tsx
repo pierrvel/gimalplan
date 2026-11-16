@@ -98,7 +98,7 @@ export const AiPlacementPreview: React.FC<AiPlacementPreviewProps> = ({
                 ? `3시간 상한 보정 ${preview.stats.trimmedForPrepCap}건`
                 : '',
               preview.stats.skippedInvalid > 0
-                ? `범위 외 제외 ${preview.stats.skippedInvalid}건`
+                ? `제외 ${preview.stats.skippedInvalid}건`
                 : '',
             ]
               .filter(Boolean)
@@ -109,6 +109,12 @@ export const AiPlacementPreview: React.FC<AiPlacementPreviewProps> = ({
       </div>
 
       <div className="max-h-72 divide-y divide-zinc-200 overflow-y-auto">
+        {diff.added.length === 0 &&
+          diff.moved.length === 0 &&
+          diff.removed.length === 0 &&
+          diff.unlinkedRemoved.length === 0 && (
+            <p className="px-3 py-2 text-xs text-zinc-500">변경 없음</p>
+          )}
         {renderSection('추가', diff.added, 'added', 'text-emerald-700')}
         {renderSection('이동', diff.moved, 'moved', 'text-blue-700')}
         {renderSection('빠짐', diff.removed, 'removed', 'text-rose-700')}

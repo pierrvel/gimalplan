@@ -168,7 +168,7 @@ export const TodayPane: React.FC<TodayPaneProps> = ({
             {progress.map((p) => {
               const subj = subjectById.get(p.subjectId);
               if (!subj) return null;
-              const done = p.remainingMinutes === 0;
+              const done = p.remainingCount === 0;
               const ratio =
                 p.totalMinutes > 0
                   ? Math.min(1, Math.max(0, (p.totalMinutes - p.remainingMinutes) / p.totalMinutes))
