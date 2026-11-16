@@ -4,7 +4,7 @@ import { PRESET_SUBJECTS } from './data/presets';
 import App from './App';
 
 describe('App runtime render smoke check', () => {
-  it('renders full 2-column layout with all 8 subjects and zero AI-slop tokens', () => {
+  it('renders today view and checklist with all 8 subjects and zero AI-slop tokens', () => {
     const html = renderToString(<App />);
     const textOnly = html
       .replace(/<!--[\s\S]*?-->/g, '')
@@ -18,7 +18,9 @@ describe('App runtime render smoke check', () => {
     expect(textOnly).toContain('기말 플래너');
     expect(textOnly).toContain('0/38');
     expect(textOnly).toContain('(0%)');
-    expect(textOnly).toContain('타임라인');
+    expect(textOnly).toContain('시간표');
+    expect(textOnly).toContain('오늘 할 일');
+    expect(textOnly).toContain('과목별 남은 양');
     expect(textOnly).toContain('체크리스트');
     expect(textOnly).toContain('잔여 38');
 

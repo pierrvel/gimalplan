@@ -9,12 +9,16 @@ interface ChecklistPaneProps {
   selectedDate?: string;
   onJumpToDate: (dateKey: string) => void;
   onScheduleChecklistItem?: (item: ChecklistItem) => void;
+  selectedSubjectId: string;
+  onSelectSubject: (subjectId: string) => void;
 }
 
 export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
   selectedDate,
   onJumpToDate,
   onScheduleChecklistItem,
+  selectedSubjectId,
+  onSelectSubject,
 }) => {
   const {
     state,
@@ -24,7 +28,6 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
     deleteChecklistItem,
   } = usePlanner();
 
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [draftTitles, setDraftTitles] = useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -99,7 +102,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
               type="button"
               role="tab"
               aria-selected={selectedSubjectId === 'all'}
-              onClick={() => setSelectedSubjectId('all')}
+              onClick={() => onSelectSubject('all')}
               className={`touch-target shrink-0 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors sm:px-2.5 ${
                 selectedSubjectId === 'all'
                   ? 'border-blue-600 bg-blue-600 font-medium text-white'
@@ -116,7 +119,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setSelectedSubjectId(subj.id)}
+                  onClick={() => onSelectSubject(subj.id)}
                   className={`touch-target shrink-0 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors sm:px-2.5 ${
                     active
                       ? 'border-blue-600 bg-blue-600 font-medium text-white'
