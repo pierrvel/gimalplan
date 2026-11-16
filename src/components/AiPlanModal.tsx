@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertCircle, Check, Cpu, MessageSquare, Plus, RefreshCw, Send, X } from 'lucide-react';
 import { usePlanner } from '../context/PlannerContext';
 import {
@@ -12,9 +12,9 @@ import {
   loadAiSchedulePreferences,
   saveAiSchedulePreferences,
 } from '../services/storage';
-import { formatShortDate, getTodayDateKey } from '../utils/time';
+import { getTodayDateKey } from '../utils/time';
 import { NativeDialog } from './NativeDialog';
-import { SubjectBadge } from './SubjectBadge';
+import { AiPlacementPreview } from './AiPlacementPreview';
 
 interface AiPlanModalProps {
   open: boolean;
@@ -103,11 +103,6 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({
   const pendingCount = state.checklistItems.filter((c) => !c.completed).length;
   const existingAiCount = state.studyBlocks.filter((b) => b.source === 'ai').length;
   const hasActiveDraft = Boolean(preview) || existingAiCount > 0;
-
-  const subjectById = useMemo(
-    () => new Map(state.subjects.map((s) => [s.id, s])),
-    [state.subjects],
-  );
 
   const selectedDuration =
     BLOCK_DURATION_PRESETS.find((p) => p.id === blockDurationPreset) ?? BLOCK_DURATION_PRESETS[2];
@@ -371,48 +366,11 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({
 
         {/* Preview */}
         {preview && (
-          <div className="space-y-2 rounded-md border border-zinc-200 bg-white">
-            <div className="border-b border-zinc-200 bg-slate-50 px-3 py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-zinc-900">생성 결과 미리보기</span>
-                <span className="tabular-nums text-zinc-600">
-                  신규 {preview.stats.acceptedCount}개 블록
-                  {preview.stats.trimmedForBudget > 0
-                    ? ` · 남은 시간 초과 보정 ${preview.stats.trimmedForBudget}건`
-                    : ''}
-                  {preview.stats.trimmedForPrepCap > 0
-                    ? ` · 3시간 상한 보정 ${preview.stats.trimmedForPrepCap}건`
-                    : ''}
-                  {preview.stats.skippedInvalid > 0
-                    ? ` · 범위 외 제외 ${preview.stats.skippedInvalid}건`
-                    : ''}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-zinc-600">{preview.rationale}</p>
-            </div>
-
-            <div className="max-h-52 divide-y divide-zinc-100 overflow-y-auto">
-              {preview.blocks
-                .filter((b) => b.source === 'ai')
-                .map((blk) => {
-                  const subj = subjectById.get(blk.subjectId);
-                  return (
-                    <div
-                      key={blk.id}
-                      className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="tabular-nums shrink-0 text-zinc-500">
-                          {formatShortDate(blk.date)} {blk.startTime}–{blk.endTime}
-                        </span>
-                        {subj && <SubjectBadge name={subj.name} colorKey={subj.colorKey} compact />}
-                        <span className="truncate text-zinc-800">{blk.title}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
+          <AiPlacementPreview
+            preview={preview}
+            checklistItems={state.checklistItems}
+            subjects={state.subjects}
+          />
         )}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-200 pt-3">
