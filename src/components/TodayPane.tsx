@@ -180,7 +180,6 @@ export const TodayPane: React.FC<TodayPaneProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectSubject(p.subjectId)}
-                    aria-label={`${subj.name} 체크리스트 보기`}
                     className="touch-target flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 sm:px-4"
                   >
                     <span className="w-24 shrink-0 truncate text-xs font-medium text-zinc-800 sm:w-28">
@@ -221,6 +220,7 @@ export const TodayPane: React.FC<TodayPaneProps> = ({
                       aria-hidden="true"
                       className="shrink-0 text-zinc-300"
                     />
+                    <span className="sr-only"> 체크리스트 보기</span>
                   </button>
                 </li>
               );

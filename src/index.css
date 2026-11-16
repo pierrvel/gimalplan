@@ -142,6 +142,21 @@ dialog::backdrop {
   border-block-end: 2px solid var(--accent-cobalt);
 }
 
+.tab-item-top[aria-selected="true"]::after {
+  inset-block-start: 0;
+  inset-block-end: auto;
+  border-block-end: 0;
+  border-block-start: 2px solid var(--accent-cobalt);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .safe-top {
   padding-top: env(safe-area-inset-top, 0px);
 }

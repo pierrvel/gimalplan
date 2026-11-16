@@ -96,7 +96,7 @@ export const ChecklistPane: React.FC<ChecklistPaneProps> = ({
           <div
             role="tablist"
             aria-label="과목 필터"
-            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5"
+            className="no-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5"
           >
             <button
               type="button"

@@ -30,7 +30,7 @@ interface BlockModalState {
 }
 
 const TAB_BUTTON_CLASS =
-  'tab-item touch-target inline-flex h-12 flex-col items-center justify-center gap-0.5 text-[11px] text-zinc-600 transition-colors hover:text-zinc-900';
+  'tab-item tab-item-top touch-target inline-flex h-12 flex-col items-center justify-center gap-0.5 text-[11px] text-zinc-600 transition-colors hover:text-zinc-900';
 
 function segmentClass(active: boolean): string {
   return `touch-target inline-flex cursor-pointer items-center justify-center gap-1 rounded px-2.5 py-1 text-xs transition-colors ${

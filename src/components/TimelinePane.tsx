@@ -196,7 +196,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
             <button
               type="button"
               onClick={() => onSelectDate(today)}
-              className={`touch-target cursor-pointer rounded-md border px-2 py-1 text-xs ${
+              className={`touch-target shrink-0 cursor-pointer whitespace-nowrap rounded-md border px-2 py-1 text-xs ${
                 selectedDate === today
                   ? 'border-blue-200 bg-blue-50 font-medium text-blue-700'
                   : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
@@ -207,7 +207,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
             <button
               type="button"
               onClick={() => onSelectDate(state.examStartDate)}
-              className={`touch-target cursor-pointer rounded-md border px-2 py-1 text-xs ${
+              className={`touch-target shrink-0 cursor-pointer whitespace-nowrap rounded-md border px-2 py-1 text-xs ${
                 selectedDate === state.examStartDate
                   ? 'border-blue-200 bg-blue-50 font-medium text-blue-700'
                   : 'border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
@@ -224,7 +224,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
               type="button"
               onClick={() => setShowFixedConstraints((v) => !v)}
               aria-pressed={showFixedConstraints}
-              className="touch-target hidden cursor-pointer rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 sm:inline-flex sm:items-center"
+              className="touch-target hidden shrink-0 cursor-pointer whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 sm:inline-flex sm:items-center"
             >
               {showFixedConstraints ? '고정일정 숨김' : '고정일정 표시'}
             </button>
@@ -564,7 +564,7 @@ export const TimelinePane: React.FC<TimelinePaneProps> = ({
                 {DAILY_GRID_HOURS.map((hour) => {
                   const hourStart = hour * 60;
                   const hourEnd = (hour + 1) * 60;
-                  const displayHour = hour > 12 ? hour - 12 : hour;
+                  const displayHour = String(hour).padStart(2, '0');
 
                   const hourSegments = chronologicalEntries
                     .map((entry) => {
