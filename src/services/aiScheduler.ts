@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { ChecklistItem, PlannerState, StudyBlock, Subject } from '../types/planner';
 import { getDayScheduleContext, isTimeRangeInsideWindows } from '../utils/availability';
+import { getItemRemainingMinutes } from '../utils/progress';
 import {
   enumerateDateRange,
   formatMinutesToTime,
@@ -13,16 +14,8 @@ export interface AiGeneratedBlockCandidate {
   startTime: string;
   endTime: string;
   subjectId: string;
-  checklistItemId?: string;
+  checklistItemId: string;
   title: string;
-}
-
-export interface AiChecklistUpdateCandidate {
-  id: string;
-  subjectId: string;
-  title: string;
-  estimatedMinutes: number;
-  deleted?: boolean;
 }
 
 export interface AiRevisionTurn {
@@ -41,20 +34,26 @@ export interface GenerateAiScheduleParams {
   customRules?: string[];
   userInstruction?: string;
   currentDraftBlocks?: StudyBlock[];
-  currentDraftChecklist?: ChecklistItem[];
   revisionHistory?: AiRevisionTurn[];
 }
 
 export interface AiScheduleResult {
+  /** Preserved blocks plus the newly accepted AI blocks, sorted by date and time. */
   blocks: StudyBlock[];
-  checklistItems: ChecklistItem[];
+  /** Only the AI blocks accepted in this generation (never preserved blocks). */
+  placedBlocks: StudyBlock[];
+  /** Blocks from the comparison base (currentDraftBlocks ?? state.studyBlocks) that are not preserved. */
+  replacedBlocks: StudyBlock[];
   rationale: string;
+  budgetMinutes: number;
+  placedMinutes: number;
+  unplacedByItem: Record<string, number>;
   stats: {
     requestedCount: number;
     acceptedCount: number;
     trimmedForPrepCap: number;
+    trimmedForBudget: number;
     skippedInvalid: number;
-    syncedChecklistCount: number;
   };
 }
 
@@ -98,47 +97,14 @@ const SCHEDULE_RESPONSE_SCHEMA = {
           },
           checklistItemId: {
             type: Type.STRING,
-            description: 'Matching checklist item id, or empty string if general review.',
+            description: 'Exact id of one of the supplied pendingChecklistItems.',
           },
           title: {
             type: Type.STRING,
             description: 'Short study task title in Korean.',
           },
         },
-        required: ['date', 'startTime', 'endTime', 'subjectId', 'title'],
-      },
-    },
-    checklistUpdates: {
-      type: Type.ARRAY,
-      description:
-        'Updates or additions to checklist items to keep the checklist synchronized with the scheduled blocks and user instructions.',
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          id: {
-            type: Type.STRING,
-            description:
-              'Existing checklist item id to update, or a new id (e.g. chk-ai-1) when creating a new checklist item.',
-          },
-          subjectId: {
-            type: Type.STRING,
-            description: 'Exact subject id from the supplied subjects list.',
-          },
-          title: {
-            type: Type.STRING,
-            description:
-              'Checklist item title in Korean, synchronized with the study block title.',
-          },
-          estimatedMinutes: {
-            type: Type.NUMBER,
-            description: 'Total estimated study minutes for this checklist item.',
-          },
-          deleted: {
-            type: Type.BOOLEAN,
-            description: 'True only if the user explicitly requested deleting this checklist item.',
-          },
-        },
-        required: ['id', 'subjectId', 'title', 'estimatedMinutes'],
+        required: ['date', 'startTime', 'endTime', 'subjectId', 'checklistItemId', 'title'],
       },
     },
   },
@@ -149,190 +115,56 @@ function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
   return aStart < bEnd && bStart < aEnd;
 }
 
-export function synchronizeChecklistWithAiBlocks(
-  baseChecklist: ChecklistItem[],
-  aiBlocks: StudyBlock[],
+function blockMinutes(block: StudyBlock): number {
+  return getDurationMinutes(block.startTime, block.endTime);
+}
+
+function compareBlocks(a: StudyBlock, b: StudyBlock): number {
+  return a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date);
+}
+
+/**
+ * Blocks that survive a regeneration.
+ * - preserve on : completed, non-AI, or before the start date
+ * - preserve off: only blocks before the start date
+ */
+export function getPreservedBlocks(
+  blocks: StudyBlock[],
+  startDate: string,
+  preserveCompletedAndManual: boolean,
+): StudyBlock[] {
+  return preserveCompletedAndManual
+    ? blocks.filter((b) => b.completed || b.source !== 'ai' || b.date < startDate)
+    : blocks.filter((b) => b.date < startDate);
+}
+
+/**
+ * Remaining minutes the AI may place per incomplete checklist item:
+ * item remaining time minus incomplete preserved blocks on/after the start date linked to it.
+ * Items with no remaining budget are omitted.
+ */
+export function computeItemBudgets(
+  state: PlannerState,
   preservedBlocks: StudyBlock[],
-  checklistUpdates: AiChecklistUpdateCandidate[] = [],
-  validSubjectIds: Set<string>,
-  now = Date.now(),
-): {
-  blocks: StudyBlock[];
-  checklistItems: ChecklistItem[];
-  syncedChecklistCount: number;
-} {
-  let syncedChecklistCount = 0;
-  const nextChecklist: ChecklistItem[] = baseChecklist.map((item) => ({ ...item }));
-  const itemById = new Map<string, ChecklistItem>(nextChecklist.map((item) => [item.id, item]));
-  const aliasIdMap = new Map<string, string>();
-  const explicitlyUpdatedTitleIds = new Set<string>();
-
-  // 1. Apply explicit checklistUpdates from Gemini (updates, additions, or explicit deletions)
-  for (const upd of checklistUpdates) {
-    if (!upd || typeof upd.id !== 'string' || typeof upd.subjectId !== 'string') continue;
-    if (!validSubjectIds.has(upd.subjectId)) continue;
-
-    const existing = itemById.get(upd.id);
-    if (upd.deleted) {
-      if (existing) {
-        itemById.delete(existing.id);
-        const idx = nextChecklist.findIndex((i) => i.id === existing.id);
-        if (idx >= 0) nextChecklist.splice(idx, 1);
-        syncedChecklistCount += 1;
-      }
-      continue;
-    }
-
-    const cleanTitle = stripPartSuffix(String(upd.title ?? '').trim());
-    if (!cleanTitle) continue;
-    const est = Math.max(15, Math.min(10080, Math.round(Number(upd.estimatedMinutes) || 60)));
-
-    if (existing) {
-      if (
-        existing.title !== cleanTitle ||
-        existing.subjectId !== upd.subjectId ||
-        existing.estimatedMinutes !== est
-      ) {
-        if (existing.title !== cleanTitle) {
-          explicitlyUpdatedTitleIds.add(existing.id);
-        }
-        existing.title = cleanTitle;
-        existing.subjectId = upd.subjectId;
-        existing.estimatedMinutes = est;
-        existing.updatedAt = now;
-        syncedChecklistCount += 1;
-      }
-    } else {
-      const normalizedId = upd.id.trim().startsWith('chk-')
-        ? upd.id.trim()
-        : `chk-ai-${Math.random().toString(36).slice(2, 8)}`;
-      const created: ChecklistItem = {
-        id: itemById.has(normalizedId)
-          ? `chk-ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-          : normalizedId,
-        subjectId: upd.subjectId,
-        title: cleanTitle,
-        completed: false,
-        estimatedMinutes: est,
-        createdAt: now,
-        updatedAt: now,
-      };
-      aliasIdMap.set(upd.id, created.id);
-      nextChecklist.push(created);
-      itemById.set(created.id, created);
-      explicitlyUpdatedTitleIds.add(created.id);
-      syncedChecklistCount += 1;
-    }
-  }
-
-  // 2. Link every AI block to an existing or newly created ChecklistItem
-  const linkedAiBlocks = aiBlocks.map((blk) => {
-    const mappedId = blk.checklistItemId
-      ? (aliasIdMap.get(blk.checklistItemId) ?? blk.checklistItemId)
-      : undefined;
-
-    let linkedItem = mappedId ? itemById.get(mappedId) : undefined;
-    const blockBaseTitle = stripPartSuffix(blk.title);
-
-    if (!linkedItem) {
-      linkedItem = nextChecklist.find(
-        (item) =>
-          item.subjectId === blk.subjectId &&
-          stripPartSuffix(item.title) === blockBaseTitle,
-      );
-    }
-
-    if (!linkedItem) {
-      const newId = `chk-ai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-      const duration = Math.max(15, getDurationMinutes(blk.startTime, blk.endTime));
-      linkedItem = {
-        id: newId,
-        subjectId: blk.subjectId,
-        title: blockBaseTitle || blk.title,
-        completed: blk.completed,
-        estimatedMinutes: duration,
-        createdAt: now,
-        updatedAt: now,
-      };
-      nextChecklist.push(linkedItem);
-      itemById.set(newId, linkedItem);
-      syncedChecklistCount += 1;
-    }
-
-    const suffix = extractPartSuffix(blk.title);
-    const nextTitle = explicitlyUpdatedTitleIds.has(linkedItem.id)
-      ? `${linkedItem.title}${suffix}`
-      : blk.title;
-
-    return {
-      ...blk,
-      checklistItemId: linkedItem.id,
-      subjectId: linkedItem.subjectId,
-      title: nextTitle,
-    };
-  });
-
-  // 3. Recompute estimatedMinutes & sync titles from scheduled blocks to ChecklistItem
-  const allResultBlocks = [...preservedBlocks, ...linkedAiBlocks];
-  const blocksByChecklistId = new Map<string, StudyBlock[]>();
-  for (const blk of allResultBlocks) {
-    if (!blk.checklistItemId) continue;
-    const list = blocksByChecklistId.get(blk.checklistItemId) ?? [];
-    list.push(blk);
-    blocksByChecklistId.set(blk.checklistItemId, list);
-  }
-
-  for (const [itemId, linkedBlocks] of blocksByChecklistId.entries()) {
-    const item = itemById.get(itemId);
-    if (!item) continue;
-
-    const totalMinutes = linkedBlocks.reduce(
-      (sum, b) => sum + getDurationMinutes(b.startTime, b.endTime),
-      0,
+  startDate: string,
+): Map<string, number> {
+  const reservedByItem = new Map<string, number>();
+  for (const b of preservedBlocks) {
+    if (!b.checklistItemId || b.completed || b.date < startDate) continue;
+    reservedByItem.set(
+      b.checklistItemId,
+      (reservedByItem.get(b.checklistItemId) ?? 0) + blockMinutes(b),
     );
-    const aiChild = linkedBlocks.find((b) => b.source === 'ai');
-    const aiBaseTitle = aiChild ? stripPartSuffix(aiChild.title) : '';
-
-    let changed = false;
-    if (totalMinutes > 0 && item.estimatedMinutes !== totalMinutes) {
-      item.estimatedMinutes = totalMinutes;
-      changed = true;
-    }
-    if (aiBaseTitle && !explicitlyUpdatedTitleIds.has(itemId) && item.title !== aiBaseTitle) {
-      item.title = aiBaseTitle;
-      changed = true;
-    }
-    if (aiChild && item.subjectId !== aiChild.subjectId) {
-      item.subjectId = aiChild.subjectId;
-      changed = true;
-    }
-    if (changed) {
-      item.updatedAt = now;
-      syncedChecklistCount += 1;
-    }
   }
 
-  // Ensure preserved blocks also reflect any synced title/subject change
-  const syncedAiIds = new Set(linkedAiBlocks.map((b) => b.id));
-  const finalBlocks = allResultBlocks.map((blk) => {
-    if (syncedAiIds.has(blk.id) || !blk.checklistItemId) return blk;
-    const item = itemById.get(blk.checklistItemId);
-    if (!item) return blk;
-    const suffix = extractPartSuffix(blk.title);
-    return {
-      ...blk,
-      subjectId: item.subjectId,
-      title: `${item.title}${suffix}`,
-    };
-  });
-
-  return {
-    blocks: finalBlocks.sort((a, b) =>
-      a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
-    ),
-    checklistItems: nextChecklist,
-    syncedChecklistCount,
-  };
+  const budgets = new Map<string, number>();
+  for (const item of state.checklistItems) {
+    if (item.completed) continue;
+    const budget =
+      getItemRemainingMinutes(item, state.studyBlocks) - (reservedByItem.get(item.id) ?? 0);
+    if (budget > 0) budgets.set(item.id, budget);
+  }
+  return budgets;
 }
 
 export function validateAndSanitizeAiBlocks(
@@ -341,21 +173,17 @@ export function validateAndSanitizeAiBlocks(
   preservedBlocks: StudyBlock[],
   startDate: string,
   endDate: string,
-  checklistUpdates: AiChecklistUpdateCandidate[] = [],
-  baseChecklistOverride?: ChecklistItem[],
+  budgets: Map<string, number>,
 ): {
   blocks: StudyBlock[];
-  checklistItems: ChecklistItem[];
   trimmedForPrepCap: number;
+  trimmedForBudget: number;
   skippedInvalid: number;
-  syncedChecklistCount: number;
+  unplacedByItem: Record<string, number>;
 } {
   const subjectById = new Map<string, Subject>(state.subjects.map((s) => [s.id, s]));
-  const workingChecklist = baseChecklistOverride ?? state.checklistItems;
-  const checklistIds = new Set([
-    ...workingChecklist.map((c) => c.id),
-    ...checklistUpdates.map((u) => u.id),
-  ]);
+  const itemById = new Map<string, ChecklistItem>(state.checklistItems.map((c) => [c.id, c]));
+  const remainingBudget = new Map(budgets);
 
   const occupiedByDate = new Map<string, Array<{ start: number; end: number }>>();
   const otherMinutesByDate = new Map<string, number>();
@@ -385,6 +213,7 @@ export function validateAndSanitizeAiBlocks(
 
   const accepted: StudyBlock[] = [];
   let trimmedForPrepCap = 0;
+  let trimmedForBudget = 0;
   let skippedInvalid = 0;
   const now = Date.now();
 
@@ -393,16 +222,41 @@ export function validateAndSanitizeAiBlocks(
   );
 
   for (const cand of sorted) {
-    if (!cand || typeof cand.date !== 'string') {
+    if (!cand || typeof cand.date !== 'string' || typeof cand.startTime !== 'string' || typeof cand.endTime !== 'string') {
       skippedInvalid += 1;
       continue;
     }
+
+    // 1. The block must point at an incomplete checklist item that still has budget.
+    const itemId = typeof cand.checklistItemId === 'string' ? cand.checklistItemId : '';
+    const item = itemById.get(itemId);
+    const budgetLeft = remainingBudget.get(itemId) ?? 0;
+    if (!item || !budgets.has(itemId)) {
+      skippedInvalid += 1;
+      continue;
+    }
+
+    // 2. Deduct from the item budget: trim the end, or drop when less than 15 minutes remain.
+    const startMin = parseTimeToMinutes(cand.startTime);
+    let endMin = parseTimeToMinutes(cand.endTime);
+    if (budgetLeft < 15) {
+      skippedInvalid += 1;
+      continue;
+    }
+    let budgetTrimmed = false;
+    if (endMin - startMin > budgetLeft) {
+      endMin = startMin + budgetLeft;
+      budgetTrimmed = true;
+    }
+
     if (cand.date < startDate || cand.date > endDate) {
       skippedInvalid += 1;
       continue;
     }
 
-    const subject = subjectById.get(cand.subjectId);
+    // Subject always comes from the linked checklist item.
+    const subjectId = item.subjectId;
+    const subject = subjectById.get(subjectId);
     if (!subject) {
       skippedInvalid += 1;
       continue;
@@ -413,32 +267,28 @@ export function validateAndSanitizeAiBlocks(
       skippedInvalid += 1;
       continue;
     }
-    if (
-      cand.date === subject.examDate &&
-      parseTimeToMinutes(cand.endTime) > parseTimeToMinutes(subject.examStart)
-    ) {
+    if (cand.date === subject.examDate && endMin > parseTimeToMinutes(subject.examStart)) {
       skippedInvalid += 1;
       continue;
     }
 
     const ctx = getDayScheduleContext(state, cand.date);
-    if (!isTimeRangeInsideWindows(cand.startTime, cand.endTime, ctx)) {
+    if (!isTimeRangeInsideWindows(formatMinutesToTime(startMin), formatMinutesToTime(endMin), ctx)) {
       skippedInvalid += 1;
       continue;
     }
 
-    const startMin = parseTimeToMinutes(cand.startTime);
-    let endMin = parseTimeToMinutes(cand.endTime);
     if (endMin - startMin < 15) {
       skippedInvalid += 1;
       continue;
     }
 
     // Enforce 직전보강 non-prep subject daily cap (e.g. max 180 minutes)
+    let prepTrimmed = false;
     if (
       ctx.finalPrepSubjectId &&
       ctx.maxOtherSubjectMinutes !== undefined &&
-      cand.subjectId !== ctx.finalPrepSubjectId
+      subjectId !== ctx.finalPrepSubjectId
     ) {
       const used = otherMinutesByDate.get(cand.date) ?? 0;
       const remaining = ctx.maxOtherSubjectMinutes - used;
@@ -448,7 +298,7 @@ export function validateAndSanitizeAiBlocks(
       }
       if (endMin - startMin > remaining) {
         endMin = startMin + remaining;
-        trimmedForPrepCap += 1;
+        prepTrimmed = true;
       }
     }
 
@@ -464,24 +314,23 @@ export function validateAndSanitizeAiBlocks(
     if (
       ctx.finalPrepSubjectId &&
       ctx.maxOtherSubjectMinutes !== undefined &&
-      cand.subjectId !== ctx.finalPrepSubjectId
+      subjectId !== ctx.finalPrepSubjectId
     ) {
       otherMinutesByDate.set(cand.date, (otherMinutesByDate.get(cand.date) ?? 0) + (endMin - startMin));
     }
 
-    const validChecklistId =
-      cand.checklistItemId && checklistIds.has(cand.checklistItemId)
-        ? cand.checklistItemId
-        : undefined;
+    if (budgetTrimmed) trimmedForBudget += 1;
+    if (prepTrimmed) trimmedForPrepCap += 1;
+    remainingBudget.set(itemId, budgetLeft - (endMin - startMin));
 
     accepted.push({
       id: `ai-${cand.date}-${formatMinutesToTime(startMin).replace(':', '')}-${Math.random().toString(36).slice(2, 6)}`,
       date: cand.date,
       startTime: formatMinutesToTime(startMin),
       endTime: formatMinutesToTime(endMin),
-      subjectId: cand.subjectId,
-      checklistItemId: validChecklistId,
-      title: cand.title.trim() || `${subject.name} 학습`,
+      subjectId,
+      checklistItemId: item.id,
+      title: item.title,
       type: 'study',
       completed: false,
       source: 'ai',
@@ -489,27 +338,26 @@ export function validateAndSanitizeAiBlocks(
     });
   }
 
-  const synced = synchronizeChecklistWithAiBlocks(
-    workingChecklist,
-    accepted,
-    preservedBlocks,
-    checklistUpdates,
-    new Set(state.subjects.map((s) => s.id)),
-    now,
-  );
+  // Titles come from the linked item; add " (i/n)" when an item spans several blocks.
+  const countByItem = new Map<string, number>();
+  for (const b of accepted) {
+    countByItem.set(b.checklistItemId!, (countByItem.get(b.checklistItemId!) ?? 0) + 1);
+  }
+  const indexByItem = new Map<string, number>();
+  const blocks = accepted.map((b) => {
+    const total = countByItem.get(b.checklistItemId!) ?? 1;
+    if (total <= 1) return b;
+    const index = (indexByItem.get(b.checklistItemId!) ?? 0) + 1;
+    indexByItem.set(b.checklistItemId!, index);
+    return { ...b, title: `${b.title} (${index}/${total})` };
+  });
 
-  // Return AI blocks separately when called directly without merging preservedBlocks,
-  // or attach checklistItems/syncedChecklistCount for full sync.
-  const acceptedAiIds = new Set(accepted.map((b) => b.id));
-  const syncedAiBlocks = synced.blocks.filter((b) => acceptedAiIds.has(b.id));
+  const unplacedByItem: Record<string, number> = {};
+  for (const [id, left] of remainingBudget) {
+    if (left > 0) unplacedByItem[id] = left;
+  }
 
-  return {
-    blocks: syncedAiBlocks,
-    checklistItems: synced.checklistItems,
-    trimmedForPrepCap,
-    skippedInvalid,
-    syncedChecklistCount: synced.syncedChecklistCount,
-  };
+  return { blocks, trimmedForPrepCap, trimmedForBudget, skippedInvalid, unplacedByItem };
 }
 
 export function buildAiSchedulePrompt(params: GenerateAiScheduleParams): {
@@ -517,6 +365,7 @@ export function buildAiSchedulePrompt(params: GenerateAiScheduleParams): {
   effectiveStart: string;
   endDate: string;
   preservedBlocks: StudyBlock[];
+  budgets: Map<string, number>;
 } {
   const {
     state,
@@ -527,19 +376,20 @@ export function buildAiSchedulePrompt(params: GenerateAiScheduleParams): {
     customRules = [],
     userInstruction,
     currentDraftBlocks = [],
-    currentDraftChecklist,
     revisionHistory = [],
   } = params;
 
   const endDate = state.examEndDate;
   const effectiveStart = startDate > endDate ? endDate : startDate;
 
-  const preservedBlocks = preserveCompletedAndManual
-    ? state.studyBlocks.filter((b) => b.completed || b.source !== 'ai')
-    : [];
+  const preservedBlocks = getPreservedBlocks(
+    state.studyBlocks,
+    effectiveStart,
+    preserveCompletedAndManual,
+  );
+  const budgets = computeItemBudgets(state, preservedBlocks, effectiveStart);
 
-  const sourceChecklist = currentDraftChecklist ?? state.checklistItems;
-  const pendingItems = sourceChecklist.filter((item) => !item.completed);
+  const pendingItems = state.checklistItems.filter((item) => budgets.has(item.id));
   if (pendingItems.length === 0) {
     throw new Error('미완료된 시험범위 항목이 없습니다.');
   }
@@ -609,7 +459,7 @@ export function buildAiSchedulePrompt(params: GenerateAiScheduleParams): {
       subjectId: item.subjectId,
       subjectName: subjectMap.get(item.subjectId)?.name ?? '',
       title: item.title,
-      estimatedMinutes: item.estimatedMinutes,
+      remainingMinutes: budgets.get(item.id) ?? 0,
     })),
     dailyAvailableConstraints: dayConstraints,
     userPreferences: {
@@ -626,14 +476,16 @@ export function buildAiSchedulePrompt(params: GenerateAiScheduleParams): {
 
   const systemPrompt = [
     '당신은 한국 고등학생 기말고사 대비 학습 플래너 스케줄링 엔진입니다.',
-    '아래 규칙을 한 치의 오차 없이 지켜 JSON으로 학습 블록과 체크리스트 변경 사항을 함께 생성·수정하세요:',
+    '아래 규칙을 한 치의 오차 없이 지켜, 주어진 체크리스트 항목을 시간표에 배치한 학습 블록을 JSON으로 생성·수정하세요:',
     '1. 모든 블록은 해당 date의 availableWindows 범위 안에 완전히 포함되어야 하며, occupiedBlocks 및 다른 생성 블록과 겹치면 안 됩니다.',
     '2. 각 과목은 반드시 자신의 examDate 이전 날짜에 배치해야 합니다 (examDate 당일 시험 이후나 종료 후에는 배치 금지).',
     '3. 직전보강 규칙 (매우 중요): dailyAvailableConstraints에서 maxOtherSubjectMinutes가 지정된 날(예: 180분)에는 finalPrepSubjectId가 아닌 다른 과목들의 총 학습 시간이 절대 maxOtherSubjectMinutes(180분)를 초과해서는 안 됩니다.',
     `4. 기본 블록 길이 및 우선순위: 시험 일정이 임박한 과목과 미완료 항목을 우선 배분하며, 각 학습 블록 길이는 기본적으로 ${minBlockMinutes}분~${maxBlockMinutes}분 단위로 구성하세요. 단, userPreferences.customRules 또는 latestUserInstruction에서 다른 블록 길이나 분할 방식을 요구하면 그 지시를 우선 따르세요.`,
-    '5. 사용자 규칙 및 직접 수정 지시 최우선 반영: userPreferences.customRules와 userPreferences.latestUserInstruction이 있는 경우(예: 블록 시간 늘리기/줄이기, 특정 과목 비중 조정, 체크리스트 항목 추가·수정·이름 변경·삭제 등), Hard Constraint(1~3번)를 위반하지 않는 선에서 최우선으로 반영하세요. currentScheduleBlocks가 함께 제공되었다면 기존 계획을 바탕으로 사용자가 요청한 부분만 정확히 수정하세요.',
-    '6. 타임라인·체크리스트 동시 동기화 (필수): 모든 학습 블록은 checklistItemId로 체크리스트 항목과 연결되어야 하며, 블록의 이름·소요 시간·과목이 바뀌거나 새 학습 항목이 추가·삭제되면 checklistUpdates에도 동일한 id, subjectId, title, estimatedMinutes 변경 내역을 반드시 함께 반환해 타임라인과 체크리스트가 항상 일치하게 유지하세요.',
-    '7. rationale은 한국어로 사용자의 규칙과 타임라인/체크리스트 수정 내역이 어떻게 반영되었는지 간결하고 객관적인 사실만 작성하세요 (이모지, 감탄사, 느낌표 금지).',
+    '5. 사용자 규칙 및 직접 수정 지시 최우선 반영: userPreferences.customRules와 userPreferences.latestUserInstruction이 있는 경우(예: 블록 시간 늘리기/줄이기, 특정 과목 비중 조정, 배치 날짜·시간 변경 등), Hard Constraint(1~3번)를 위반하지 않는 선에서 최우선으로 반영하세요. currentScheduleBlocks가 함께 제공되었다면 기존 계획을 바탕으로 사용자가 요청한 부분만 정확히 수정하세요.',
+    '6. 배치 전용: 모든 블록의 checklistItemId는 pendingChecklistItems의 id 중 하나여야 하며, 항목별 배치 시간 합은 그 항목의 remainingMinutes를 넘으면 안 됩니다. 모든 빈 시간을 채울 필요는 없습니다. 체크리스트 항목을 추가·삭제·수정하지 마세요.',
+    '7. 균등 배분: 각 과목의 남은 시간을 그 과목 시험일 전날까지의 날짜에 고르게 나누고, 하루에 한 과목만 몰지 마세요.',
+    '8. 사용자가 체크리스트 항목 추가·삭제를 요청하면 수행하지 말고, rationale에 "체크리스트 수정은 직접 해 주세요"라고 안내하세요.',
+    '9. rationale은 한국어로 사용자의 규칙과 배치 조정 내역이 어떻게 반영되었는지 간결하고 객관적인 사실만 작성하세요 (이모지, 감탄사, 느낌표 금지).',
   ].join('\n');
 
   return {
@@ -641,6 +493,7 @@ export function buildAiSchedulePrompt(params: GenerateAiScheduleParams): {
     effectiveStart,
     endDate,
     preservedBlocks,
+    budgets,
   };
 }
 
@@ -650,7 +503,8 @@ export async function generateAiStudySchedule(
   const { state, apiKey, model } = params;
 
   const trimmedKey = apiKey.trim();
-  const { fullPrompt, effectiveStart, endDate, preservedBlocks } = buildAiSchedulePrompt(params);
+  const { fullPrompt, effectiveStart, endDate, preservedBlocks, budgets } =
+    buildAiSchedulePrompt(params);
 
   const resolvedModel = model.trim() || 'gemini-4-hydrogen';
 
@@ -716,7 +570,6 @@ export async function generateAiStudySchedule(
   let parsed: {
     rationale?: string;
     blocks?: AiGeneratedBlockCandidate[];
-    checklistUpdates?: AiChecklistUpdateCandidate[];
   };
   try {
     parsed = JSON.parse(text);
@@ -725,43 +578,40 @@ export async function generateAiStudySchedule(
   }
 
   const rawBlocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
-  const rawChecklistUpdates = Array.isArray(parsed.checklistUpdates) ? parsed.checklistUpdates : [];
   const validated = validateAndSanitizeAiBlocks(
     rawBlocks,
     state,
     preservedBlocks,
     effectiveStart,
     endDate,
-    rawChecklistUpdates,
-    params.currentDraftChecklist,
+    budgets,
   );
 
-  // Also ensure preserved blocks keep synced titles/subjects from checklistItems
-  const updatedItemById = new Map(validated.checklistItems.map((c) => [c.id, c]));
-  const syncedPreserved = preservedBlocks.map((blk) => {
-    if (!blk.checklistItemId) return blk;
-    const item = updatedItemById.get(blk.checklistItemId);
-    if (!item) return blk;
-    const suffix = extractPartSuffix(blk.title);
-    return {
-      ...blk,
-      subjectId: item.subjectId,
-      title: `${item.title}${suffix}`,
-    };
-  });
+  const preservedIds = new Set(preservedBlocks.map((b) => b.id));
+  const baseBlocks = params.currentDraftBlocks ?? state.studyBlocks;
+  const replacedBlocks = baseBlocks.filter((b) => !preservedIds.has(b.id));
+
+  let budgetMinutes = 0;
+  for (const minutes of budgets.values()) budgetMinutes += minutes;
+  const placedMinutes = validated.blocks.reduce((sum, b) => sum + blockMinutes(b), 0);
 
   return {
-    blocks: [...syncedPreserved, ...validated.blocks].sort((a, b) =>
-      a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
-    ),
-    checklistItems: validated.checklistItems,
-    rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '가용 시간 및 직전보강 제약을 기준으로 학습 블록과 체크리스트를 함께 반영했습니다.',
+    blocks: [...preservedBlocks, ...validated.blocks].sort(compareBlocks),
+    placedBlocks: validated.blocks,
+    replacedBlocks,
+    rationale:
+      typeof parsed.rationale === 'string'
+        ? parsed.rationale
+        : '가용 시간 및 직전보강 제약을 기준으로 체크리스트 항목을 배치했습니다.',
+    budgetMinutes,
+    placedMinutes,
+    unplacedByItem: validated.unplacedByItem,
     stats: {
       requestedCount: rawBlocks.length,
       acceptedCount: validated.blocks.length,
       trimmedForPrepCap: validated.trimmedForPrepCap,
+      trimmedForBudget: validated.trimmedForBudget,
       skippedInvalid: validated.skippedInvalid,
-      syncedChecklistCount: validated.syncedChecklistCount,
     },
   };
 }

@@ -119,7 +119,6 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({
 
     const trimmedInstruction = userInstruction.trim();
     const currentDraftBlocks = preview?.blocks ?? state.studyBlocks;
-    const currentDraftChecklist = preview?.checklistItems ?? state.checklistItems;
 
     try {
       const result = await generateAiStudySchedule({
@@ -134,8 +133,6 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({
         userInstruction: trimmedInstruction || undefined,
         currentDraftBlocks:
           trimmedInstruction || preview ? currentDraftBlocks : undefined,
-        currentDraftChecklist:
-          trimmedInstruction || preview ? currentDraftChecklist : undefined,
         revisionHistory,
       });
 
@@ -159,7 +156,7 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({
 
   const handleApply = () => {
     if (!preview) return;
-    replaceStudyBlocksFromAi(preview.blocks, preview.checklistItems);
+    replaceStudyBlocksFromAi(preview.blocks);
     setPreview(null);
     setRevisionHistory([]);
     onClose();
@@ -380,8 +377,8 @@ export const AiPlanModal: React.FC<AiPlanModalProps> = ({
                 <span className="font-semibold text-zinc-900">생성 결과 미리보기</span>
                 <span className="tabular-nums text-zinc-600">
                   신규 {preview.stats.acceptedCount}개 블록
-                  {preview.stats.syncedChecklistCount > 0
-                    ? ` · 체크리스트 동기화 ${preview.stats.syncedChecklistCount}건`
+                  {preview.stats.trimmedForBudget > 0
+                    ? ` · 남은 시간 초과 보정 ${preview.stats.trimmedForBudget}건`
                     : ''}
                   {preview.stats.trimmedForPrepCap > 0
                     ? ` · 3시간 상한 보정 ${preview.stats.trimmedForPrepCap}건`
