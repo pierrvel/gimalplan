@@ -17,10 +17,13 @@ function blockMinutes(block: StudyBlock): number {
 
 export function getItemRemainingMinutes(item: ChecklistItem, blocks: StudyBlock[]): number {
   if (item.completed) return 0;
-  const done = blocks
-    .filter((b) => b.checklistItemId === item.id && b.completed)
+  return Math.max(0, item.estimatedMinutes - completedLinkedMinutes(item.id, blocks));
+}
+
+function completedLinkedMinutes(itemId: string, blocks: StudyBlock[]): number {
+  return blocks
+    .filter((b) => b.checklistItemId === itemId && b.completed)
     .reduce((sum, b) => sum + blockMinutes(b), 0);
-  return Math.max(0, item.estimatedMinutes - done);
 }
 
 export function getSubjectProgress(state: PlannerState, today: string): SubjectProgress[] {
@@ -35,12 +38,14 @@ export function getSubjectProgress(state: PlannerState, today: string): SubjectP
         0,
       );
       const daysLeft = Math.max(1, calculateDDay(subject.examDate, today));
+      const completedItemIds = new Set(items.filter((i) => i.completed).map((i) => i.id));
       const overdueMinutes = state.studyBlocks
         .filter(
           (b) =>
             b.subjectId === subject.id &&
             b.date < today &&
             !b.completed &&
+            !(b.checklistItemId && completedItemIds.has(b.checklistItemId)) &&
             (b.type === 'study' || b.type === 'final_prep'),
         )
         .reduce((sum, b) => sum + blockMinutes(b), 0);
@@ -77,11 +82,15 @@ export function applyStudyBlockToggle(
   let checklistItems = state.checklistItems;
   const linkedId = target.checklistItemId;
   if (linkedId) {
+    // Complete when every linked block is done, or when completed linked minutes reach the estimate.
     const allDone = studyBlocks
       .filter((b) => b.checklistItemId === linkedId)
       .every((b) => b.completed);
+    const doneMinutes = completedLinkedMinutes(linkedId, studyBlocks);
     checklistItems = state.checklistItems.map((c) =>
-      c.id === linkedId ? { ...c, completed: allDone, updatedAt: now } : c,
+      c.id === linkedId
+        ? { ...c, completed: allDone || doneMinutes >= c.estimatedMinutes, updatedAt: now }
+        : c,
     );
   }
   return { ...state, studyBlocks, checklistItems };

@@ -407,6 +407,26 @@ describe('AI placement-only budgets', () => {
     expect(budgets.get('chk-calc1-1')).toBe(30);
   });
 
+  it('computeItemBudgets with preservation off ignores completed blocks deleted on apply', () => {
+    const state = createInitialPlannerState();
+    state.studyBlocks = [
+      block({
+        id: 'done-on-start',
+        date: '2026-11-16',
+        startTime: '09:00',
+        endTime: '09:30',
+        checklistItemId: 'chk-calc1-1',
+        completed: true,
+      }),
+    ];
+    expect(state.checklistItems.find((c) => c.id === 'chk-calc1-1')!.estimatedMinutes).toBe(90);
+    const preserved = getPreservedBlocks(state.studyBlocks, '2026-11-16', false);
+    expect(preserved).toEqual([]);
+
+    const budgets = computeItemBudgets(state, preserved, '2026-11-16');
+    expect(budgets.get('chk-calc1-1')).toBe(90);
+  });
+
   it('getPreservedBlocks without preservation keeps only blocks before the start date', () => {
     const blocks = [
       block({ id: 'past', date: '2026-11-14', startTime: '19:00', endTime: '20:00' }),

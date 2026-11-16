@@ -132,6 +132,34 @@ describe('applyStudyBlockToggle', () => {
     expect(itemA(s3).completed).toBe(false);
   });
 
+  it('completes the item when completed minutes reach the estimate despite a missed past block', () => {
+    const item = makeItem({ id: 'A', estimatedMinutes: 90 });
+    const missed = makeBlock({ id: 'missed', checklistItemId: 'A', date: '2026-11-15', startTime: '09:00', endTime: '10:00' });
+    const f1 = makeBlock({ id: 'f1', checklistItemId: 'A', date: '2026-11-17', startTime: '09:00', endTime: '10:00' });
+    const f2 = makeBlock({ id: 'f2', checklistItemId: 'A', date: '2026-11-17', startTime: '10:00', endTime: '10:30' });
+    const s0: PlannerState = { ...makeState([missed, f1, f2]), checklistItems: [item] };
+    const overdue = (s: PlannerState) =>
+      getSubjectProgress(s, '2026-11-16').find((p) => p.subjectId === 'subj-eng2')!.overdueMinutes;
+    expect(overdue(s0)).toBe(60);
+
+    const s1 = applyStudyBlockToggle(s0, 'f1', 100);
+    expect(itemA(s1).completed).toBe(false);
+    const s2 = applyStudyBlockToggle(s1, 'f2', 200);
+    expect(itemA(s2).completed).toBe(true);
+    expect(overdue(s2)).toBe(0);
+
+    const s3 = applyStudyBlockToggle(s2, 'f2', 300);
+    expect(itemA(s3).completed).toBe(false);
+    expect(overdue(s3)).toBe(60);
+  });
+
+  it('overdue still counts unlinked past blocks', () => {
+    const s = makeState([makeBlock({ id: 'free', date: '2026-11-15', startTime: '09:00', endTime: '09:45' })]);
+    expect(
+      getSubjectProgress(s, '2026-11-16').find((p) => p.subjectId === 'subj-eng2')!.overdueMinutes,
+    ).toBe(45);
+  });
+
   it('does not change checklistItems for a block without a linked item', () => {
     const s0 = { ...setup(), studyBlocks: [makeBlock({ id: 'free' })] };
     const s1 = applyStudyBlockToggle(s0, 'free', 100);

@@ -140,7 +140,8 @@ export function getPreservedBlocks(
 
 /**
  * Remaining minutes the AI may place per incomplete checklist item:
- * item remaining time minus incomplete preserved blocks on/after the start date linked to it.
+ * item estimate minus completed linked minutes among the preserved blocks (the blocks that
+ * survive apply), minus incomplete preserved blocks on/after the start date linked to it.
  * Items with no remaining budget are omitted.
  */
 export function computeItemBudgets(
@@ -161,7 +162,7 @@ export function computeItemBudgets(
   for (const item of state.checklistItems) {
     if (item.completed) continue;
     const budget =
-      getItemRemainingMinutes(item, state.studyBlocks) - (reservedByItem.get(item.id) ?? 0);
+      getItemRemainingMinutes(item, preservedBlocks) - (reservedByItem.get(item.id) ?? 0);
     if (budget > 0) budgets.set(item.id, budget);
   }
   return budgets;
