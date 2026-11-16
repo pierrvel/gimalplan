@@ -61,3 +61,28 @@ export function getTodayStudyBlocks(state: PlannerState, today: string): StudyBl
     .filter((b) => b.date === today && (b.type === 'study' || b.type === 'final_prep'))
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
+
+export function applyStudyBlockToggle(
+  state: PlannerState,
+  blockId: string,
+  now: number,
+): PlannerState {
+  const target = state.studyBlocks.find((b) => b.id === blockId);
+  if (!target) return state;
+  const nextCompleted = !target.completed;
+  const studyBlocks = state.studyBlocks.map((b) =>
+    b.id === blockId ? { ...b, completed: nextCompleted, updatedAt: now } : b,
+  );
+
+  let checklistItems = state.checklistItems;
+  const linkedId = target.checklistItemId;
+  if (linkedId) {
+    const allDone = studyBlocks
+      .filter((b) => b.checklistItemId === linkedId)
+      .every((b) => b.completed);
+    checklistItems = state.checklistItems.map((c) =>
+      c.id === linkedId ? { ...c, completed: allDone, updatedAt: now } : c,
+    );
+  }
+  return { ...state, studyBlocks, checklistItems };
+}

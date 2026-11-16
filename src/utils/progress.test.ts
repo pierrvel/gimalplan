@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createInitialPlannerState } from '../data/presets';
 import type { ChecklistItem, PlannerState, StudyBlock } from '../types/planner';
 import {
+  applyStudyBlockToggle,
   getItemRemainingMinutes,
   getSubjectProgress,
   getTodayStudyBlocks,
@@ -108,5 +109,39 @@ describe('getTodayStudyBlocks', () => {
       makeBlock({ id: 'o', date: '2026-11-17' }),
     ]);
     expect(getTodayStudyBlocks(state, '2026-11-16').map((b) => b.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('applyStudyBlockToggle', () => {
+  function setup() {
+    const item = makeItem({ id: 'A' });
+    const b1 = makeBlock({ id: 'b1', checklistItemId: 'A' });
+    const b2 = makeBlock({ id: 'b2', checklistItemId: 'A', startTime: '10:00', endTime: '11:00' });
+    return { ...makeState([b1, b2]), checklistItems: [item] };
+  }
+  const itemA = (s: PlannerState) => s.checklistItems.find((c) => c.id === 'A')!;
+
+  it('completes the item only when all linked blocks are checked, and reverts on uncheck', () => {
+    const s0 = setup();
+    const s1 = applyStudyBlockToggle(s0, 'b1', 100);
+    expect(s1.studyBlocks.find((b) => b.id === 'b1')!.completed).toBe(true);
+    expect(itemA(s1).completed).toBe(false);
+    const s2 = applyStudyBlockToggle(s1, 'b2', 200);
+    expect(itemA(s2).completed).toBe(true);
+    const s3 = applyStudyBlockToggle(s2, 'b1', 300);
+    expect(itemA(s3).completed).toBe(false);
+  });
+
+  it('does not change checklistItems for a block without a linked item', () => {
+    const s0 = { ...setup(), studyBlocks: [makeBlock({ id: 'free' })] };
+    const s1 = applyStudyBlockToggle(s0, 'free', 100);
+    expect(s1.checklistItems).toBe(s0.checklistItems);
+    expect(s1.studyBlocks[0].completed).toBe(true);
+  });
+
+  it('sets updatedAt to now on the changed block and item', () => {
+    const s1 = applyStudyBlockToggle(setup(), 'b1', 555);
+    expect(s1.studyBlocks.find((b) => b.id === 'b1')!.updatedAt).toBe(555);
+    expect(itemA(s1).updatedAt).toBe(555);
   });
 });

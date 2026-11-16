@@ -39,6 +39,7 @@ import {
 } from '../services/sync';
 import { extractPartSuffix, stripPartSuffix } from '../services/aiScheduler';
 import { formatMinutesToTime, getDurationMinutes, parseTimeToMinutes } from '../utils/time';
+import { applyStudyBlockToggle } from '../utils/progress';
 
 interface PlannerContextValue {
   state: PlannerState;
@@ -485,34 +486,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const toggleStudyBlock = useCallback(
     (blockId: string) => {
-      commitLocalMutation((prev) => {
-        const now = Date.now();
-        const target = prev.studyBlocks.find((b) => b.id === blockId);
-        if (!target) return prev;
-        const nextCompleted = !target.completed;
-
-        const nextBlocks = prev.studyBlocks.map((b) =>
-          b.id === blockId ? { ...b, completed: nextCompleted, updatedAt: now } : b,
-        );
-
-        let nextChecklist = prev.checklistItems;
-        if (target.checklistItemId) {
-          const linkedId = target.checklistItemId;
-          const anyOtherCompleted = nextBlocks.some(
-            (b) => b.checklistItemId === linkedId && b.completed,
-          );
-          const shouldBeCompleted = nextCompleted || anyOtherCompleted;
-          nextChecklist = prev.checklistItems.map((c) =>
-            c.id === linkedId ? { ...c, completed: shouldBeCompleted, updatedAt: now } : c,
-          );
-        }
-
-        return {
-          ...prev,
-          studyBlocks: nextBlocks,
-          checklistItems: nextChecklist,
-        };
-      });
+      commitLocalMutation((prev) => applyStudyBlockToggle(prev, blockId, Date.now()));
     },
     [commitLocalMutation],
   );
